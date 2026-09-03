@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 
 import Header from '../components/Header';
@@ -10,6 +10,30 @@ function ProfilePage() {
   const { id } = useParams();
 
   const [tab, setTab] = useState('posts');
+  const [profile, setProfile] = useState(null);
+
+  useEffect(() => {
+    fetch(`/api/profiles/${id}`)
+      .then(response => response.json())
+      .then(data => {
+        setProfile(data.profile);
+      })
+      .catch(error => {
+        console.error('Error loading profile:', error);
+      });
+  }, [id]);
+
+  if (!profile) {
+    return (
+      <>
+        <Header />
+
+        <main className="container">
+          <p>Loading profile...</p>
+        </main>
+      </>
+    );
+  }
 
   return (
     <div>
@@ -19,6 +43,7 @@ function ProfilePage() {
       <main className="container">
 
         <Profile
+          profile={profile}
           onEdit={() => setTab('edit')}
         />
 

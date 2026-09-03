@@ -1,55 +1,49 @@
 import Image from './Image';
 
-function Post() {
-  const post = {
-    authorName: 'Leara Gangadin',
-    troop: 'Troop 17',
-    date: 'January 15, 2026',
-    description:
-      'We had an amazing winter camp and spent the weekend hiking through the mountains.',
-    hashtags: [
-      '#Camping',
-      '#Hiking',
-      '#Adventure',
-      '#WinterSurvival'
-    ],
-    likes: 42,
-    views: 1240
-  };
-
+function Post({ post }) {
   return (
     <article className="card post-detail">
 
       <div className="post-author">
 
         <div className="avatar">
-          👤
+          {post.authorName.charAt(0)}
         </div>
 
         <div>
           <strong>{post.authorName}</strong>
+
           <p>
-            {post.troop} • {post.date}
+            {post.troop}
           </p>
         </div>
 
       </div>
 
       <p>
-        <strong>Part of:</strong> Winter Camp
+        <strong>{post.title}</strong>
       </p>
 
-      <Image alt="Winter camp" />
+      <Image alt={post.title} />
 
-      <p>{post.description}</p>
+      <p>
+        {post.description}
+      </p>
 
       <p className="hashtags">
         {post.hashtags.join(' ')}
       </p>
 
       <div className="post-stats">
-        <span>❤️ {post.likes} likes</span>
-        <span>👁️ {post.views} views</span>
+
+        <span>
+          ❤️ {post.likes} likes
+        </span>
+
+        <span>
+          💬 {post.comments} comments
+        </span>
+
       </div>
 
     </article>

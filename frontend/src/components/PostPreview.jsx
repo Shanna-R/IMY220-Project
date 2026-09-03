@@ -7,26 +7,32 @@ function PostPreview({ post }) {
 
       <div className="post-preview-header">
         <div className="avatar">
-          👤
+          {post.authorName?.charAt(0)}
         </div>
 
-        <div>
+        <div className="post-preview-user">
           <strong>{post.authorName}</strong>
           <p>{post.troop} • {post.timeAgo}</p>
         </div>
       </div>
 
-      {post.imageUrl && (
+      {post.imageUrl ? (
         <img
           className="post-preview-image"
           src={post.imageUrl}
           alt={post.title}
         />
+      ) : (
+        <div className="post-preview-image-placeholder">
+          🖼️
+        </div>
       )}
 
       <h3>{post.title}</h3>
 
-      <p>{post.description}</p>
+      <p className="post-preview-description">
+        {post.description}
+      </p>
 
       <p className="hashtags">
         {post.hashtags?.join(' ')}

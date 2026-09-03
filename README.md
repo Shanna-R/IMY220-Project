@@ -117,6 +117,6 @@ No database is required for Deliverable 1.
 
 GITHUB REPOSITORY
 
-PASTE YOUR GITHUB REPOSITORY LINK HERE
+https://github.com/Shanna-R/IMY220-Project.git
 
 Created by Shanna Reinecke

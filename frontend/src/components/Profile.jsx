@@ -1,21 +1,26 @@
-function Profile({ onEdit }) {
+function Profile({ profile, onEdit }) {
   return (
     <section className="card profile-card">
 
       <div className="profile-photo">
-        👤
+        {profile.name.charAt(0)}
       </div>
 
       <div className="profile-information">
 
         <h1>
-          Shanna Reinecke
+          {profile.name}
           <span className="badge">
             First Class Scout
           </span>
         </h1>
 
+        <p>
+          @{profile.username}
+        </p>
+
         <div className="profile-actions">
+
           <button
             className="btn btn-primary"
             onClick={onEdit}
@@ -24,21 +29,18 @@ function Profile({ onEdit }) {
           </button>
 
           <button className="btn btn-outline">
-            Friends (127)
+            Friends ({profile.friends})
           </button>
+
         </div>
 
         <p>
-          📍 South Africa
-          &nbsp; 🏕️ 8th Pretoria St Albans
-          &nbsp; 📅 Member since March 2016
+          📍 {profile.location}
+          &nbsp; 🏕️ {profile.troop}
         </p>
 
         <p>
-          Hiking enthusiast, knot tying expert,
-          and Patrol Leader at St Albans.
-          Constantly exploring the trails of the
-          Drakensberg. Always prepared!
+          {profile.bio}
         </p>
 
         <p>

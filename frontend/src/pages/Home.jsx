@@ -1,67 +1,24 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Header from '../components/Header';
 import Feed from '../components/Feed';
 import SearchInput from '../components/SearchInput';
 import { Link } from 'react-router-dom';
 import '../index.css';
 
-const localPosts = [
-  {
-    id: 1,
-    authorName: 'Leara Gangadin',
-    troop: 'Troop 17',
-    timeAgo: '2 hours ago',
-    title: 'Mountain Hike',
-    description: 'Amazing hike with the troop this weekend!',
-    likes: 32,
-    comments: 4,
-    hashtags: ['#Hiking', '#Adventure']
-  },
-  {
-    id: 2,
-    authorName: 'Jemma Smith',
-    troop: '8th Pretoria',
-    timeAgo: '5 hours ago',
-    title: 'Campfire Evening',
-    description: 'Great memories around the campfire.',
-    likes: 18,
-    comments: 2,
-    hashtags: ['#Camping', '#Campfire']
-  }
-];
-
-const globalPosts = [
-  {
-    id: 3,
-    authorName: 'Alex Brown',
-    troop: 'Cape Town Scouts',
-    timeAgo: 'Yesterday',
-    title: 'Coastal Adventure',
-    description: 'Exploring the coast with our troop.',
-    likes: 45,
-    comments: 9,
-    hashtags: ['#Adventure', '#Scouts']
-  },
-  {
-    id: 4,
-    authorName: 'Sam Jones',
-    troop: 'Durban Scouts',
-    timeAgo: 'Yesterday',
-    title: 'Pioneering Tower',
-    description: 'Our troop completed a huge pioneering project.',
-    likes: 51,
-    comments: 11,
-    hashtags: ['#Pioneering', '#Scouting']
-  }
-];
-
 function Home() {
   const [feedType, setFeedType] = useState('local');
+  const [posts, setPosts] = useState([]);
 
-  const posts =
-    feedType === 'local'
-      ? localPosts
-      : globalPosts;
+  useEffect(() => {
+    fetch('/api/posts')
+      .then(response => response.json())
+      .then(data => {
+        setPosts(data.posts);
+      })
+      .catch(error => {
+        console.error('Error loading posts:', error);
+      });
+  }, []);
 
   return (
     <div>
@@ -121,6 +78,7 @@ function Home() {
           />
 
           <div className="feed-tabs">
+
             <button
               className={feedType === 'local' ? 'active' : ''}
               onClick={() => setFeedType('local')}
@@ -134,9 +92,14 @@ function Home() {
             >
               Global
             </button>
+
           </div>
 
-          <Feed posts={posts} />
+          {posts.length === 0 ? (
+            <p>Loading posts...</p>
+          ) : (
+            <Feed posts={posts} />
+          )}
 
         </section>
 

@@ -1,24 +1,37 @@
 import { Link } from 'react-router-dom';
-import '../index.css';
+import logo from '../assets/logo.png';
 
 function Header() {
-  const userId = 1;
-
   return (
     <header className="header">
-      <Link to="/home" className="header-logo">
-        Woggle
-      </Link>
+      <div className="header-inner">
 
-      <nav className="header-nav">
-        <Link to="/home">Home</Link>
-        <Link to="/home">Explore</Link>
-        <Link to="/home">Albums</Link>
-        <Link to="/friends">Friends</Link>
-        <Link to={`/profile/${userId}`}>Profile</Link>
-        <Link to="/home">Notifications</Link>
-        <Link to="/search">Search</Link>
-      </nav>
+        {/* Logo */}
+        <Link to="/home" className="header-logo">
+          <img src={logo} alt="Woggle Logo" />
+        </Link>
+
+        {/* Navigation */}
+        <nav className="header-nav">
+          <Link to="/home">Home</Link>
+          <Link to="/search">Explore</Link>
+          <Link to="/albums">Albums</Link>
+          <Link to="/friends">Friends</Link>
+        </nav>
+
+        {/* Right side */}
+        <div className="header-actions">
+          <Link to="/notifications" className="notification-link">
+            🔔
+          </Link>
+
+          <Link to="/profile/23532" className="profile-bubble">
+            <span className="profile-avatar">S</span>
+            <span className="profile-name">Shanna</span>
+          </Link>
+        </div>
+
+      </div>
     </header>
   );
 }

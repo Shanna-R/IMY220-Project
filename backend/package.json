@@ -1,17 +1,21 @@
 {
   "name": "woggle-backend",
   "version": "1.0.0",
-  "description": "Woggle D1 Backend",
+  "description": "Woggle D2 Backend",
   "main": "server.js",
+  "type": "module",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "seed": "node seed.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
     "cors": "^2.8.6",
-    "express": "^5.2.1"
+    "dotenv": "^18.0.4",
+    "express": "^5.2.1",
+    "express-session": "^1.19.0",
+    "mongodb": "^7.6.0"
   }
 }

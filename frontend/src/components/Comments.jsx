@@ -1,89 +1,172 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
-const initialComments = [
-  {
-    user: 'Jemma',
-    text: 'Looks like an amazing trip!',
-    time: '2 hours ago'
-  },
-  {
-    user: 'Alex',
-    text: 'Great photos!',
-    time: '3 hours ago'
-  },
-  {
-    user: 'Sam',
-    text: 'Wish I could have joined!',
-    time: 'Yesterday'
+import { useAuth } from '../context/AuthContext';
+
+function Comments({ postId }) {
+  const { user } = useAuth();
+
+  const [comments, setComments] = useState([]);
+  const [text, setText] = useState('');
+
+  const [error, setError] = useState('');
+
+  async function loadComments() {
+    try {
+      const response = await fetch(
+        `/api/posts/${postId}/comments`,
+        {
+          credentials: 'include'
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || 'Could not load comments.'
+        );
+      }
+
+      setComments(data.comments || []);
+    } catch (error) {
+      setError(error.message);
+    }
   }
-];
 
-function Comments() {
-  const [comments, setComments] =
-    useState(initialComments);
+  useEffect(() => {
+    loadComments();
+  }, [postId]);
 
-  const [newComment, setNewComment] =
-    useState('');
-
-  function handleSubmit(event) {
+  async function addComment(event) {
     event.preventDefault();
 
-    if (!newComment.trim()) {
+    if (!text.trim()) {
       return;
     }
 
-    setComments([
-      ...comments,
-      {
-        user: 'Shanna',
-        text: newComment,
-        time: 'Just now'
-      }
-    ]);
+    try {
+      const response = await fetch(
+        `/api/posts/${postId}/comments`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          credentials: 'include',
+          body: JSON.stringify({
+            text
+          })
+        }
+      );
 
-    setNewComment('');
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || 'Could not add comment.'
+        );
+      }
+
+      setText('');
+
+      loadComments();
+    } catch (error) {
+      setError(error.message);
+    }
+  }
+
+  async function deleteComment(commentId) {
+    try {
+      const response = await fetch(
+        `/api/comments/${commentId}`,
+        {
+          method: 'DELETE',
+          credentials: 'include'
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error || 'Could not delete comment.'
+        );
+      }
+
+      loadComments();
+    } catch (error) {
+      setError(error.message);
+    }
   }
 
   return (
-    <section>
+    <section >
+      <h2>
+        Comments
+      </h2>
 
-      <h2>Comments</h2>
+      {error && (
+        <p className="form-error">
+          {error}
+        </p>
+      )}
 
-      {comments.map((comment, index) => (
-        <div className="comment" key={index}>
+      <form onSubmit={addComment}>
+        <label htmlFor="comment-text">
+          Add a comment
+        </label>
 
-          <div className="avatar">
-            👤
-          </div>
-
-          <div>
-            <strong>{comment.user}</strong>
-            <p>{comment.text}</p>
-            <small>{comment.time}</small>
-          </div>
-
-        </div>
-      ))}
-
-      <form
-        className="comment-form"
-        onSubmit={handleSubmit}
-      >
-
-        <input
-          value={newComment}
+        <textarea
+          id="comment-text"
+          value={text}
           onChange={(event) =>
-            setNewComment(event.target.value)
+            setText(event.target.value)
           }
-          placeholder="Leave a comment..."
+          placeholder="Write a comment..."
         />
 
-        <button className="btn btn-primary">
-          Post
+        <button
+          type="submit"
+          className="btn"
+        >
+          Comment
         </button>
-
       </form>
 
+      <div className="comments-list">
+        {comments.length === 0 ? (
+          <p>
+            No comments yet.
+          </p>
+        ) : (
+          comments.map((comment) => (
+            <article
+              className="comment"
+              key={comment._id}
+            >
+              <strong>
+                {comment.author?.name ||
+                  'Unknown User'}
+              </strong>
+
+              <p>
+                {comment.text}
+              </p>
+
+              {comment.userId === user?._id && (
+                <button
+                  className="btn btn-outline"
+                  onClick={() =>
+                    deleteComment(comment._id)
+                  }
+                >
+                  Delete
+                </button>
+              )}
+            </article>
+          ))
+        )}
+      </div>
     </section>
   );
 }

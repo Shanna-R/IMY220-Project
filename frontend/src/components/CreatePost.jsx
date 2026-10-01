@@ -11,11 +11,11 @@ function CreatePost() {
   function validate() {
     const newErrors = {};
 
-    if (!caption.trim()) {
+    if(!caption.trim()) {
       newErrors.caption = 'Caption is required.';
     }
 
-    if (!image) {
+    if(!image) {
       newErrors.image = 'Please select an image.';
     }
 
@@ -27,7 +27,7 @@ function CreatePost() {
   function handleSubmit(event) {
     event.preventDefault();
 
-    if (!validate()) {
+    if(!validate()) {
       return;
     }
 

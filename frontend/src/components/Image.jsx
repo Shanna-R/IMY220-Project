@@ -1,5 +1,5 @@
 function Image({ src, alt = 'Post image' }) {
-  if (!src) {
+  if(!src) {
     return (
       <div className="post-image-placeholder">
         🏕️

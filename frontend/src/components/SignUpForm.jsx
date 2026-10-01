@@ -1,202 +1,124 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-function SignUpForm({ onSuccess }) {
+import { useAuth } from '../context/AuthContext';
+
+function SignupForm() {
+  const { signup } = useAuth();
+  const navigate = useNavigate();
+
   const [form, setForm] = useState({
-    fullName: '',
+    name: '',
     username: '',
     email: '',
-    password: '',
-    confirmPassword: ''
+    password: ''
   });
 
-  const [errors, setErrors] =
-    useState({});
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const [message, setMessage] =
-    useState('');
-
-  function update(field, value) {
+  function handleChange(event) {
     setForm({
       ...form,
-      [field]: value
+      [event.target.name]: event.target.value
     });
-  }
-
-  function validate() {
-    const newErrors = {};
-
-    if (!form.fullName.trim()) {
-      newErrors.fullName =
-        'Full name is required.';
-    }
-
-    if (!form.username.trim()) {
-      newErrors.username =
-        'Username is required.';
-    }
-
-    if (!form.email.trim()) {
-      newErrors.email =
-        'Email is required.';
-    } else if (
-      !form.email.includes('@')
-    ) {
-      newErrors.email =
-        'Enter a valid email.';
-    }
-
-    if (!form.password) {
-      newErrors.password =
-        'Password is required.';
-    } else if (
-      form.password.length < 6
-    ) {
-      newErrors.password =
-        'Password must be at least 6 characters.';
-    }
-
-    if (
-      form.password !==
-      form.confirmPassword
-    ) {
-      newErrors.confirmPassword =
-        'Passwords do not match.';
-    }
-
-    setErrors(newErrors);
-
-    return Object.keys(newErrors).length === 0;
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
 
-    if (!validate()) {
+    setError('');
+
+    if (
+      !form.name ||
+      !form.username ||
+      !form.email ||
+      !form.password
+    ) {
+      setError('Please complete all fields.');
       return;
     }
 
     try {
-      const response = await fetch(
-        'http://localhost:5000/api/auth/signup',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(form)
-        }
-      );
+      setLoading(true);
 
-      const data = await response.json();
+      await signup(form);
 
-      setMessage(data.message);
-
-      if (data.success && onSuccess) {
-        onSuccess();
-      }
-
+      navigate('/home');
     } catch (error) {
-      setMessage(
-        'Could not connect to the server.'
-      );
+      setError(error.message);
+    } finally {
+      setLoading(false);
     }
   }
 
   return (
-    <form
-      className="card auth-form"
-      onSubmit={handleSubmit}
-    >
-
-      <h2>Sign Up</h2>
-
-      <label>Full Name</label>
-      <input
-        value={form.fullName}
-        onChange={(e) =>
-          update('fullName', e.target.value)
-        }
-      />
-
-      {errors.fullName && (
+    <form onSubmit={handleSubmit} className="form-card">
+      {error && (
         <p className="form-error">
-          {errors.fullName}
+          {error}
         </p>
       )}
 
-      <label>Username</label>
+      <label htmlFor="signup-name">
+        Full Name
+      </label>
+
       <input
+        id="signup-name"
+        name="name"
+        value={form.name}
+        onChange={handleChange}
+        placeholder="Full name"
+      />
+
+      <label htmlFor="signup-username">
+        Username
+      </label>
+
+      <input
+        id="signup-username"
+        name="username"
         value={form.username}
-        onChange={(e) =>
-          update('username', e.target.value)
-        }
+        onChange={handleChange}
+        placeholder="Username"
       />
 
-      {errors.username && (
-        <p className="form-error">
-          {errors.username}
-        </p>
-      )}
+      <label htmlFor="signup-email">
+        Email
+      </label>
 
-      <label>Email</label>
       <input
+        id="signup-email"
+        name="email"
         type="email"
         value={form.email}
-        onChange={(e) =>
-          update('email', e.target.value)
-        }
+        onChange={handleChange}
+        placeholder="you@example.com"
       />
 
-      {errors.email && (
-        <p className="form-error">
-          {errors.email}
-        </p>
-      )}
+      <label htmlFor="signup-password">
+        Password
+      </label>
 
-      <label>Password</label>
       <input
+        id="signup-password"
+        name="password"
         type="password"
         value={form.password}
-        onChange={(e) =>
-          update('password', e.target.value)
-        }
+        onChange={handleChange}
+        placeholder="Password"
       />
-
-      {errors.password && (
-        <p className="form-error">
-          {errors.password}
-        </p>
-      )}
-
-      <label>Confirm Password</label>
-      <input
-        type="password"
-        value={form.confirmPassword}
-        onChange={(e) =>
-          update(
-            'confirmPassword',
-            e.target.value
-          )
-        }
-      />
-
-      {errors.confirmPassword && (
-        <p className="form-error">
-          {errors.confirmPassword}
-        </p>
-      )}
 
       <button
-        className="btn btn-primary"
         type="submit"
+        className="btn"
+        disabled={loading}
       >
-        Sign Up
+        {loading ? 'Creating account...' : 'Register'}
       </button>
-
-      {message && <p>{message}</p>}
-
     </form>
   );
 }
 
-export default SignUpForm;
+export default SignupForm;

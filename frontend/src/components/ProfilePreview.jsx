@@ -12,7 +12,7 @@ function ProfilePreview({
       </div>
 
       <div className="profile-preview-info">
-        <Link to={`/profile/${user.id}`}>
+        <Link to={`/users/${user.id}`}>
           <strong>{user.name}</strong>
         </Link>
 

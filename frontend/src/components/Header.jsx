@@ -1,35 +1,92 @@
-import { Link } from 'react-router-dom';
+import { NavLink, Link, useNavigate } from 'react-router-dom';
+
+import { useAuth } from '../context/AuthContext';
 import logo from '../assets/logo.png';
 
 function Header() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+
   return (
     <header className="header">
       <div className="header-inner">
 
-        {/* Logo */}
+        {/* Woggle logo on the left */}
         <Link to="/home" className="header-logo">
-          <img src={logo} alt="Woggle Logo" />
+          <img src={logo} alt="Woggle" />
         </Link>
 
-        {/* Navigation */}
+        {/* Main navigation */}
         <nav className="header-nav">
-          <Link to="/home">Home</Link>
-          <Link to="/search">Explore</Link>
-          <Link to="/albums">Albums</Link>
-          <Link to="/friends">Friends</Link>
+
+          <NavLink
+            to="/home"
+            className={({ isActive }) =>
+              isActive ? 'active' : ''
+            }
+          >
+            Home
+          </NavLink>
+
+          <NavLink
+            to="/search"
+            className={({ isActive }) =>
+              isActive ? 'active' : ''
+            }
+          >
+            Search
+          </NavLink>
+
+          <NavLink
+            to="/friends"
+            className={({ isActive }) =>
+              isActive ? 'active' : ''
+            }
+          >
+            Friends
+          </NavLink>
+
+          <NavLink
+            to="/albums"
+            className={({ isActive }) =>
+              isActive ? 'active' : ''
+            }
+          >
+            Albums
+          </NavLink>
+
         </nav>
 
-        {/* Right side */}
-        <div className="header-actions">
-          <Link to="/notifications" className="notification-link">
-            🔔
-          </Link>
+        {/* User information on the right */}
+        {user && (
+          <div className="header-user">
 
-          <Link to="/profile/23532" className="profile-bubble">
-            <span className="profile-avatar">S</span>
-            <span className="profile-name">Shanna</span>
-          </Link>
-        </div>
+            <Link
+              to={`/users/${user._id}`}
+              className="header-user-link"
+            >
+              {user.profileImage ? (
+                <img
+                  src={user.profileImage}
+                  alt={user.name}
+                  className="header-user-image"
+                />
+              ) : (
+                <div className="header-user-avatar">
+                  {user.name
+                    ? user.name.charAt(0).toUpperCase()
+                    : '?'}
+                </div>
+              )}
+
+              <span className="header-user-name">
+                {user.name}
+              </span>
+            </Link>
+
+          </div>
+        )}
 
       </div>
     </header>

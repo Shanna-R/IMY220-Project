@@ -1,117 +1,80 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-function LoginForm({ onSuccess }) {
+import { useAuth } from '../context/AuthContext';
+
+function LoginForm() {
+  const { login } = useAuth();
+  const navigate = useNavigate();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  const [errors, setErrors] = useState({});
-  const [message, setMessage] = useState('');
-
-  function validate() {
-    const newErrors = {};
-
-    if (!email.trim()) {
-      newErrors.email = 'Email is required.';
-    }
-
-    if (!password) {
-      newErrors.password =
-        'Password is required.';
-    }
-
-    setErrors(newErrors);
-
-    return Object.keys(newErrors).length === 0;
-  }
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   async function handleSubmit(event) {
     event.preventDefault();
 
-    if (!validate()) {
+    setError('');
+
+    if (!email || !password) {
+      setError('Please enter your email and password.');
       return;
     }
 
     try {
-      const response = await fetch(
-        'http://localhost:5000/api/auth/signin',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            email,
-            password
-          })
-        }
-      );
+      setLoading(true);
 
-      const data = await response.json();
+      await login(email, password);
 
-      setMessage(data.message);
-
-      if (data.success && onSuccess) {
-        onSuccess();
-      }
-
+      navigate('/home');
     } catch (error) {
-      setMessage(
-        'Could not connect to the server.'
-      );
+      setError(error.message);
+    } finally {
+      setLoading(false);
     }
   }
 
   return (
-    <form
-      className="card auth-form"
-      onSubmit={handleSubmit}
-    >
+    <form onSubmit={handleSubmit} className="form-card">
+      {error && (
+        <p className="form-error">
+          {error}
+        </p>
+      )}
 
-      <h2>Login</h2>
-
-      <label>Email</label>
+      <label htmlFor="login-email">
+        Email
+      </label>
 
       <input
+        id="login-email"
         type="email"
         value={email}
-        onChange={(e) =>
-          setEmail(e.target.value)
-        }
+        onChange={(event) => setEmail(event.target.value)}
+        placeholder="you@example.com"
       />
 
-      {errors.email && (
-        <p className="form-error">
-          {errors.email}
-        </p>
-      )}
-
-      <label>Password</label>
+      <label htmlFor="login-password">
+        Password
+      </label>
 
       <input
+        id="login-password"
         type="password"
         value={password}
-        onChange={(e) =>
-          setPassword(e.target.value)
-        }
+        onChange={(event) => setPassword(event.target.value)}
+        placeholder="Password"
       />
 
-      {errors.password && (
-        <p className="form-error">
-          {errors.password}
-        </p>
-      )}
-
       <button
-        className="btn btn-primary"
         type="submit"
+        className="btn"
+        disabled={loading}
       >
-        Login
+        {loading ? 'Signing in...' : 'Sign In'}
       </button>
-
-      {message && (
-        <p>{message}</p>
-      )}
-
     </form>
   );
 }

@@ -1,39 +1,113 @@
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+
 import Header from '../components/Header';
-import ProfilePreview from '../components/ProfilePreview';
-
-const requests = [
-  {
-    id: 10,
-    name: 'Taylor Green',
-    troop: 'Pretoria Scouts • South Africa',
-    mutualFriends: 3
-  },
-  {
-    id: 11,
-    name: 'Jamie Smith',
-    troop: 'Centurion Scouts • South Africa',
-    mutualFriends: 5
-  }
-];
-
-const friends = [
-  {
-    id: 2,
-    name: 'Jemma Smith',
-    troop: '8th Pretoria • South Africa',
-    mutualFriends: 12
-  },
-  {
-    id: 3,
-    name: 'Alex Brown',
-    troop: 'Troop 17 • South Africa',
-    mutualFriends: 8
-  }
-];
 
 function FriendsPage() {
+  const [data, setData] = useState({
+    friends: [],
+    received: [],
+    sent: []
+  });
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  async function loadFriends() {
+    try {
+      setLoading(true);
+      setError('');
+
+      const response = await fetch(
+        '/api/friends',
+        {
+          credentials: 'include'
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.error ||
+          'Could not load friends.'
+        );
+      }
+
+      setData({
+        friends: result.friends || [],
+        received: result.received || [],
+        sent: result.sent || []
+      });
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadFriends();
+  }, []);
+
+  async function accept(id) {
+    try {
+      setError('');
+
+      const response = await fetch(
+        `/api/users/${id}/accept`,
+        {
+          method: 'POST',
+          credentials: 'include'
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.error ||
+          result.message ||
+          'Could not accept request.'
+        );
+      }
+
+      loadFriends();
+    } catch (error) {
+      setError(error.message);
+    }
+  }
+
+  async function decline(id) {
+    try {
+      setError('');
+
+      const response = await fetch(
+        `/api/users/${id}/decline`,
+        {
+          method: 'POST',
+          credentials: 'include'
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.error ||
+          result.message ||
+          'Could not decline request.'
+        );
+      }
+
+      loadFriends();
+    } catch (error) {
+      setError(error.message);
+    }
+  }
+
   return (
-    <div>
+    <div className="page">
 
       <Header />
 
@@ -43,37 +117,148 @@ function FriendsPage() {
           Friends
         </h1>
 
-        <h2>Friend Requests (2)</h2>
+        {error && (
+          <p className="form-error">
+            {error}
+          </p>
+        )}
 
-        {requests.map((user) => (
-          <ProfilePreview
-            key={user.id}
-            user={user}
-            actionLabel="Accept"
-          />
-        ))}
+        {loading ? (
+          <p className="loading">
+            Loading friends...
+          </p>
+        ) : (
+          <>
 
-        <h2>My Friends</h2>
+            <section className="friends-section">
 
-        {friends.map((user) => (
-          <ProfilePreview
-            key={user.id}
-            user={user}
-            actionLabel="Remove Friend"
-          />
-        ))}
+              <h2>
+                Friend Requests
+              </h2>
 
-        <h2>Suggested Scouts</h2>
+              {data.received.length === 0 ? (
+                <div className="empty-state">
+                  <p>
+                    No pending requests.
+                  </p>
+                </div>
+              ) : (
+                <div className="friends-grid">
 
-        <ProfilePreview
-          user={{
-            id: 20,
-            name: 'Jordan Lee',
-            troop: 'Cape Town Scouts',
-            mutualFriends: 4
-          }}
-          actionLabel="Add Friend"
-        />
+                  {data.received.map((person) => (
+                    <article
+                      className="card friend-card"
+                      key={person._id}
+                    >
+
+                      <div className="avatar">
+                        {person.name
+                          ?.charAt(0)
+                          .toUpperCase()}
+                      </div>
+
+                      <h3>
+                        {person.name}
+                      </h3>
+
+                      <p>
+                        @{person.username}
+                      </p>
+
+                      <div className="friend-actions">
+
+                        <Link
+                          to={`/users/${person._id}`}
+                          className="btn btn-outline"
+                        >
+                          View
+                        </Link>
+
+                        <button
+                          className="btn btn-success"
+                          onClick={() =>
+                            accept(person._id)
+                          }
+                        >
+                          Accept
+                        </button>
+
+                        <button
+                          className="btn btn-danger"
+                          onClick={() =>
+                            decline(person._id)
+                          }
+                        >
+                          Decline
+                        </button>
+
+                      </div>
+
+                    </article>
+                  ))}
+
+                </div>
+              )}
+
+            </section>
+
+
+            <section className="friends-section">
+
+              <h2>
+                Your Friends
+              </h2>
+
+              {data.friends.length === 0 ? (
+                <div className="empty-state">
+                  <p>
+                    You don't have any friends yet.
+                  </p>
+                </div>
+              ) : (
+                <div className="friends-grid">
+
+                  {data.friends.map((friend) => (
+                    <article
+                      className="card friend-card"
+                      key={friend._id}
+                    >
+
+                      <div className="avatar">
+                        {friend.name
+                          ?.charAt(0)
+                          .toUpperCase()}
+                      </div>
+
+                      <h3>
+                        {friend.name}
+                      </h3>
+
+                      <p>
+                        @{friend.username}
+                      </p>
+
+                      <div className="friend-actions">
+
+                        <Link
+                          to={`/users/${friend._id}`}
+                          className="btn btn-outline"
+                        >
+                          View User
+                        </Link>
+
+                      </div>
+
+                    </article>
+                  ))}
+
+                </div>
+              )}
+
+            </section>
+
+          </>
+        )}
 
       </main>
 

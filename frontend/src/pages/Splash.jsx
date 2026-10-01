@@ -7,10 +7,27 @@ import { useAuth } from '../context/AuthContext';
 import logo from '../assets/splash-logo.jpeg';
 
 function Splash() {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
 
   const [showSignup, setShowSignup] = useState(false);
 
+  // Wait until we know whether someone is logged in.
+  if (loading) {
+    return (
+      <main className="splash-page">
+        <div className="auth-section">
+          <p>Loading...</p>
+        </div>
+      </main>
+    );
+  }
+
+  // Admin users have their own completely separate area.
+  if (user?.isAdmin) {
+    return <Navigate to="/admin" replace />;
+  }
+
+  // Normal users go to the normal User website.
   if (user) {
     return <Navigate to="/home" replace />;
   }
@@ -34,6 +51,7 @@ function Splash() {
         </p>
 
         <div className="splash-buttons">
+
           <button
             className="btn btn-primary"
             onClick={() => setShowSignup(false)}
@@ -47,6 +65,7 @@ function Splash() {
           >
             Create Account
           </button>
+
         </div>
 
       </section>

@@ -26,9 +26,13 @@ function LoginForm() {
     try {
       setLoading(true);
 
-      await login(email, password);
+      const data = await login(email, password);
 
-      navigate('/home');
+      if (data.user.isAdmin) {
+        navigate('/admin');
+      } else {
+        navigate('/home');
+      }
     } catch (error) {
       setError(error.message);
     } finally {

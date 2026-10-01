@@ -1,7 +1,8 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
-function ProtectedRoute({ children }) {
+function AdminProtectedRoute({ children })
+{
     const { user, loading } = useAuth();
 
     if (loading)
@@ -18,13 +19,12 @@ function ProtectedRoute({ children }) {
         return <Navigate to="/" replace />;
     }
 
-    // Admin users are completely separated from normal User pages.
-    if (user.isAdmin)
+    if (!user.isAdmin)
     {
-        return <Navigate to="/admin" replace />;
+        return <Navigate to="/home" replace />;
     }
 
     return children;
 }
 
-export default ProtectedRoute;
+export default AdminProtectedRoute;

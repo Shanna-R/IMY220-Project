@@ -12,7 +12,9 @@ import EditProfilePage from './pages/EditProfilePage';
 import AlbumsPage from './pages/AlbumsPage';
 import AlbumPage from './pages/AlbumPage';
 import CreateAlbumPage from './pages/CreateAlbumPage';
+import AdminPage from './pages/AdminPage';
 
+import AdminProtectedRoute from './components/AdminProtectedRoute';
 import ProtectedRoute from './components/ProtectedRoute';
 
 function App() {
@@ -109,6 +111,15 @@ function App() {
           <ProtectedRoute>
             <CreateAlbumPage />
           </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/admin"
+        element={
+            <AdminProtectedRoute>
+                <AdminPage />
+            </AdminProtectedRoute>
         }
       />
 

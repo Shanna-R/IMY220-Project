@@ -8,7 +8,7 @@ function SearchInput({ placeholder = 'Search...' }) {
   function handleSubmit(event) {
     event.preventDefault();
 
-    if (!search.trim()) {
+    if(!search.trim()) {
       return;
     }
 

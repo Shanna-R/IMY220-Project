@@ -18,7 +18,15 @@ function PostPage() {
   const [hashtags, setHashtags] = useState('');
 
   const [reportReason, setReportReason] = useState('');
-  const [reportReasons, setReportReasons] = useState([]);
+
+  const reportReasons = [
+    'Spam',
+    'Harassment',
+    'Inappropriate content',
+    'False information',
+    'Copyright violation',
+    'Other'
+  ];
 
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -38,7 +46,7 @@ function PostPage() {
 
       if (!response.ok) {
         throw new Error(
-          data.error || 'Could not load post.'
+          data.error || data.message || 'Could not load post.'
         );
       }
 
@@ -52,35 +60,8 @@ function PostPage() {
     }
   }
 
-  async function loadReportReasons() {
-    try {
-      const response = await fetch(
-        '/api/report-reasons',
-        {
-          credentials: 'include'
-        }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.error || 'Could not load report reasons.'
-        );
-      }
-
-      setReportReasons(data.reasons || []);
-    } catch (error) {
-      console.error(
-        'Could not load report reasons:',
-        error
-      );
-    }
-  }
-
   useEffect(() => {
     loadPost();
-    loadReportReasons();
   }, [id]);
 
   async function updatePost(event) {
@@ -114,7 +95,7 @@ function PostPage() {
 
       if (!response.ok) {
         throw new Error(
-          data.error || 'Could not update post.'
+          data.error || data.message || 'Could not update post.'
         );
       }
 
@@ -150,7 +131,7 @@ function PostPage() {
 
       if (!response.ok) {
         throw new Error(
-          data.error || 'Could not delete post.'
+          data.error || data.message || 'Could not delete post.'
         );
       }
 
@@ -190,7 +171,7 @@ function PostPage() {
 
       if (!response.ok) {
         throw new Error(
-          data.error || 'Could not report post.'
+          data.error || data.message || 'Could not report post.'
         );
       }
 
@@ -283,14 +264,13 @@ function PostPage() {
               )}
 
               <Comments postId={id} />
-              <br/>
-              <br/>
+
+              <br />
+              <br />
 
               {!ownPost && (
-                <form
-                  
-                  onSubmit={reportPost}
-                >
+                <form onSubmit={reportPost}>
+
                   <h3 className="section-title">
                     Report Post
                   </h3>
@@ -325,10 +305,9 @@ function PostPage() {
                   >
                     Report
                   </button>
+
                 </form>
               )}
-
-              
 
             </>
           ) : (

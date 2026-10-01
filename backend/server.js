@@ -41,8 +41,13 @@ import {
 
 import {
   createReport,
-  countReportsForPost
+  countReportsForPost,
+  getAllReports,
+  hasUserReported,
+  deleteReportsForPost,
+  deleteReportsForUser
 } from './repositories/reportRepository.js';
+
 
 dotenv.config();
 
@@ -82,6 +87,37 @@ function requireLogin(req, res, next) {
   }
 
   next();
+}
+
+function requireAdmin(req, res, next)
+{
+    if (!req.session.userId)
+    {
+        return res.status(401).json({
+            message: 'You must be logged in.'
+        });
+    }
+
+    getUserById(req.session.userId)
+        .then(user =>
+        {
+            if (!user || !user.isAdmin)
+            {
+                return res.status(403).json({
+                    message: 'Admin access required.'
+                });
+            }
+
+            next();
+        })
+        .catch(error =>
+        {
+            console.error('Admin check failed:', error);
+
+            res.status(500).json({
+                message: 'Unable to check admin access.'
+            });
+        });
 }
 
 function makeId(prefix) {
@@ -2150,25 +2186,336 @@ app.delete(
   }
 );
 
+
+// ==================== ADMIN ROUTES ====================
+
+// Get all users
+app.get('/api/admin/users', requireAdmin, async (req, res) =>
+{
+    try
+    {
+        const users = await getAllUsers();
+
+        res.json({
+            users
+        });
+    }
+    catch (error)
+    {
+        console.error('Could not load admin users:', error);
+
+        res.status(500).json({
+            message: 'Unable to load users.'
+        });
+    }
+});
+
+
+// Edit any user
+app.put('/api/admin/users/:id', requireAdmin, async (req, res) =>
+{
+    try
+    {
+        const { name, username, bio, location, profileImage } = req.body;
+
+        const updates = {
+            name,
+            username,
+            bio,
+            location,
+            profileImage
+        };
+
+        const updatedUser = await updateUser(
+            req.params.id,
+            updates
+        );
+
+        if (!updatedUser)
+        {
+            return res.status(404).json({
+                message: 'User not found.'
+            });
+        }
+
+        res.json({
+            message: 'User updated successfully.',
+            user: updatedUser
+        });
+    }
+    catch (error)
+    {
+        console.error('Could not update user:', error);
+
+        res.status(500).json({
+            message: 'Unable to update user.'
+        });
+    }
+});
+
+
+// Delete any user
+app.delete('/api/admin/users/:id', requireAdmin, async (req, res) =>
+{
+    try
+    {
+        const result = await deleteUser(req.params.id);
+
+        if (result.deletedCount === 0)
+        {
+            return res.status(404).json({
+                message: 'User not found.'
+            });
+        }
+
+        await deleteReportsForUser(req.params.id);
+
+        res.json({
+            message: 'User deleted successfully.'
+        });
+    }
+    catch (error)
+    {
+        console.error('Could not delete user:', error);
+
+        res.status(500).json({
+            message: 'Unable to delete user.'
+        });
+    }
+});
+
+
+// Get all posts
+app.get('/api/admin/posts', requireAdmin, async (req, res) =>
+{
+    try
+    {
+        const posts = await getAllPosts();
+
+        res.json({
+            posts
+        });
+    }
+    catch (error)
+    {
+        console.error('Could not load admin posts:', error);
+
+        res.status(500).json({
+            message: 'Unable to load posts.'
+        });
+    }
+});
+
+
+// Edit any post
+app.put('/api/admin/posts/:id', requireAdmin, async (req, res) =>
+{
+    try
+    {
+        const { title, description, hashtags, imageUrl } = req.body;
+
+        const updatedPost = await updatePost(
+            req.params.id,
+            {
+                title,
+                description,
+                hashtags,
+                imageUrl
+            }
+        );
+
+        if (!updatedPost)
+        {
+            return res.status(404).json({
+                message: 'Post not found.'
+            });
+        }
+
+        res.json({
+            message: 'Post updated successfully.',
+            post: updatedPost
+        });
+    }
+    catch (error)
+    {
+        console.error('Could not update post:', error);
+
+        res.status(500).json({
+            message: 'Unable to update post.'
+        });
+    }
+});
+
+
+// Delete any post
+app.delete('/api/admin/posts/:id', requireAdmin, async (req, res) =>
+{
+    try
+    {
+        const result = await deletePost(req.params.id);
+
+        if (result.deletedCount === 0)
+        {
+            return res.status(404).json({
+                message: 'Post not found.'
+            });
+        }
+
+        await deleteReportsForPost(req.params.id);
+
+        res.json({
+            message: 'Post deleted successfully.'
+        });
+    }
+    catch (error)
+    {
+        console.error('Could not delete post:', error);
+
+        res.status(500).json({
+            message: 'Unable to delete post.'
+        });
+    }
+});
+
+
+// Delete any activity
+app.delete('/api/admin/activity/:id', requireAdmin, async (req, res) =>
+{
+    try
+    {
+        const db = getDB();
+
+        const result = await db.collection('activities').deleteOne({
+            _id: req.params.id
+        });
+
+        if (result.deletedCount === 0)
+        {
+            return res.status(404).json({
+                message: 'Activity not found.'
+            });
+        }
+
+        res.json({
+            message: 'Activity deleted successfully.'
+        });
+    }
+    catch (error)
+    {
+        console.error('Could not delete activity:', error);
+
+        res.status(500).json({
+            message: 'Unable to delete activity.'
+        });
+    }
+});
+
+
+// Get report reasons
+app.get('/api/admin/report-reasons', requireAdmin, async (req, res) =>
+{
+    try
+    {
+        const db = getDB();
+
+        const reasons = await db
+            .collection('reportReasons')
+            .find({})
+            .toArray();
+
+        res.json({
+            reasons
+        });
+    }
+    catch (error)
+    {
+        console.error('Could not load report reasons:', error);
+
+        res.status(500).json({
+            message: 'Unable to load report reasons.'
+        });
+    }
+});
+
+
+// Add a new report reason
+app.post('/api/admin/report-reasons', requireAdmin, async (req, res) =>
+{
+    try
+    {
+        const { reason } = req.body;
+
+        if (!reason || !reason.trim())
+        {
+            return res.status(400).json({
+                message: 'Report reason is required.'
+            });
+        }
+
+        const db = getDB();
+
+        const newReason = {
+            _id: makeId('reason'),
+            reason: reason.trim(),
+            createdAt: new Date()
+        };
+
+        await db.collection('reportReasons').insertOne(
+            newReason
+        );
+
+        res.status(201).json({
+            message: 'Report reason added successfully.',
+            reason: newReason
+        });
+    }
+    catch (error)
+    {
+        console.error('Could not add report reason:', error);
+
+        res.status(500).json({
+            message: 'Unable to add report reason.'
+        });
+    }
+});
+
+
 /* =========================
-REPORT REASONS
+   REPORT REASONS
 ========================= */
 
 app.get(
-'/api/report-reasons',
-requireLogin,
-(req, res) => {
-res.json({
-reasons: [
-'Spam',
-'Harassment',
-'Inappropriate content',
-'False information',
-'Copyright violation',
-'Other'
-]
-});
-}
+  '/api/report-reasons',
+  requireLogin,
+  async (req, res) => {
+    try
+    {
+      const db = getDB();
+
+      const reasons = await db
+        .collection('reportReasons')
+        .find({})
+        .sort({
+          createdAt: 1
+        })
+        .toArray();
+
+      res.json({
+        reasons
+      });
+    }
+    catch (error)
+    {
+      console.error(
+        'Could not load report reasons:',
+        error
+      );
+
+      res.status(500).json({
+        message: 'Unable to load report reasons.'
+      });
+    }
+  }
 );
 
 
@@ -2176,26 +2523,34 @@ reasons: [
    REPORTS
 ========================= */
 
+
+/*
+    REPORT A POST
+*/
 app.post(
   '/api/posts/:id/reports',
   requireLogin,
   async (req, res) => {
-    try {
-      const post =
-        await getPostById(
-          req.params.id
-        );
+    try
+    {
+      const postId = req.params.id;
+      const reporterId = req.session.userId;
 
-      if (!post) {
+      const post =
+        await getPostById(postId);
+
+      if (!post)
+      {
         return res.status(404).json({
           message: 'Post not found.'
         });
       }
 
-      if (
-        post.authorId ===
-        req.session.userId
-      ) {
+      /*
+          Users cannot report their own post.
+      */
+      if (post.authorId === reporterId)
+      {
         return res.status(400).json({
           message: 'You cannot report your own post.'
         });
@@ -2205,30 +2560,58 @@ app.post(
         reason
       } = req.body;
 
-      if (!reason) {
+      if (!reason)
+      {
         return res.status(400).json({
           message: 'A report reason is required.'
         });
       }
 
+      /*
+          Prevent duplicate reports from
+          the same User for the same post.
+      */
+      const alreadyReported =
+        await hasUserReported(
+          reporterId,
+          'post',
+          postId
+        );
+
+      if (alreadyReported)
+      {
+        return res.status(400).json({
+          message: 'You have already reported this post.'
+        });
+      }
+
       const report = {
         _id: makeId('r'),
-        postId: req.params.id,
-        reporterId: req.session.userId,
-        reason,
+
+        reporterId,
+
+        targetType: 'post',
+
+        targetId: postId,
+
+        reason: reason.trim(),
+
         createdAt: new Date()
       };
 
-      await createReport(
-        report
-      );
+      await createReport(report);
 
       res.status(201).json({
-        message: 'Post reported.'
+        message: 'Post reported successfully.',
+        report
       });
-
-    } catch (error) {
-      console.error(error);
+    }
+    catch (error)
+    {
+      console.error(
+        'Report post error:',
+        error
+      );
 
       res.status(500).json({
         message: 'Unable to report post.'
@@ -2236,6 +2619,218 @@ app.post(
     }
   }
 );
+
+
+/*
+    REPORT A USER
+*/
+app.post(
+  '/api/users/:id/reports',
+  requireLogin,
+  async (req, res) => {
+    try
+    {
+      const targetUserId =
+        req.params.id;
+
+      const reporterId =
+        req.session.userId;
+
+      /*
+          Users cannot report themselves.
+      */
+      if (targetUserId === reporterId)
+      {
+        return res.status(400).json({
+          message: 'You cannot report yourself.'
+        });
+      }
+
+      const targetUser =
+        await getUserById(
+          targetUserId
+        );
+
+      if (!targetUser)
+      {
+        return res.status(404).json({
+          message: 'User not found.'
+        });
+      }
+
+      const {
+        reason
+      } = req.body;
+
+      if (!reason)
+      {
+        return res.status(400).json({
+          message: 'A report reason is required.'
+        });
+      }
+
+      /*
+          Prevent duplicate User reports.
+      */
+      const alreadyReported =
+        await hasUserReported(
+          reporterId,
+          'user',
+          targetUserId
+        );
+
+      if (alreadyReported)
+      {
+        return res.status(400).json({
+          message: 'You have already reported this User.'
+        });
+      }
+
+      const report = {
+        _id: makeId('r'),
+
+        reporterId,
+
+        targetType: 'user',
+
+        targetId: targetUserId,
+
+        reason: reason.trim(),
+
+        createdAt: new Date()
+      };
+
+      await createReport(report);
+
+      res.status(201).json({
+        message: 'User reported successfully.',
+        report
+      });
+    }
+    catch (error)
+    {
+      console.error(
+        'Report User error:',
+        error
+      );
+
+      res.status(500).json({
+        message: 'Unable to report User.'
+      });
+    }
+  }
+);
+
+
+/*
+    ADMIN: GET ALL REPORTS
+*/
+app.get(
+    '/api/admin/reports',
+    requireAdmin,
+    async (req, res) =>
+    {
+        try
+        {
+            const reports = await getAllReports();
+
+            const enrichedReports =
+                await Promise.all(
+                    reports.map(async report =>
+                    {
+                        const reporter =
+                            await getUserById(
+                                report.reporterId
+                            );
+
+                        let target = null;
+
+                        if (
+                            report.targetType === 'post'
+                        )
+                        {
+                            const post =
+                                await getPostById(
+                                    report.targetId
+                                );
+
+                            if (post)
+                            {
+                                const author =
+                                    await getUserById(
+                                        post.authorId
+                                    );
+
+                                target = {
+                                    ...post,
+                                    author: author
+                                        ? {
+                                            _id: author._id,
+                                            name: author.name,
+                                            username:
+                                                author.username
+                                        }
+                                        : null
+                                };
+                            }
+                        }
+
+                        if (
+                            report.targetType === 'user'
+                        )
+                        {
+                            const targetUser =
+                                await getUserById(
+                                    report.targetId
+                                );
+
+                            if (targetUser)
+                            {
+                                const {
+                                    password,
+                                    ...safeUser
+                                } = targetUser;
+
+                                target = safeUser;
+                            }
+                        }
+
+                        return {
+                            ...report,
+
+                            reporter: reporter
+                                ? {
+                                    _id: reporter._id,
+                                    name: reporter.name,
+                                    username:
+                                        reporter.username
+                                }
+                                : null,
+
+                            target
+                        };
+                    })
+                );
+
+            res.json({
+                reports: enrichedReports
+            });
+        }
+        catch (error)
+        {
+            console.error(
+                'Could not load admin reports:',
+                error
+            );
+
+            res.status(500).json({
+                message:
+                    'Unable to load reports.'
+            });
+        }
+    }
+);
+
 
 /* =========================
    START SERVER

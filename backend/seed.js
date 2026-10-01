@@ -120,7 +120,21 @@ const users = [
         friendRequestsReceived: [],
         isAdmin: false,
         createdAt: new Date('2026-09-08')
-    }
+    },
+    {
+        _id: 'u-admin',
+        name: 'Admin User',
+        username: 'admin',
+        email: 'admin@example.com',
+        password: '12345678',
+        bio: 'Woggle Administrator',
+        location: 'Pretoria',
+        profileImage: '',
+        friends: [],
+        friendRequestsSent: [],
+        friendRequestsReceived: [],
+        isAdmin: true,
+        createdAt: new Date('2026-09-09') }
 ];
 
 const posts = [
@@ -288,7 +302,26 @@ const comments = [
     }
 ];
 
-const reports = [];
+
+const reports = [
+    {
+        _id: 'r1',
+        reporterId: 'u2',
+        targetType: 'post',
+        targetId: 'p1',
+        reason: 'Spam',
+        createdAt: new Date('2026-09-25T10:00:00')
+    },
+    {
+        _id: 'r2',
+        reporterId: 'u3',
+        targetType: 'user',
+        targetId: 'u4',
+        reason: 'Harassment',
+        createdAt: new Date('2026-09-25T11:00:00')
+    }
+];
+
 
 async function seed() {
     await connectDB();
@@ -315,6 +348,7 @@ async function seed() {
     console.log('Posts:', posts.length);
     console.log('Albums:', albums.length);
     console.log('Comments:', comments.length);
+    console.log('Reports:', reports.length);
 
     process.exit(0);
 }

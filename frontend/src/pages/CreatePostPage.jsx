@@ -14,6 +14,7 @@ function CreatePostPage() {
 
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
 
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -35,9 +36,7 @@ function CreatePostPage() {
   }
 
   // Let the user choose an image from their device.
-  function handleImageChange(event) {
-    const file = event.target.files[0];
-
+  function handleSelectedImage(file) {
     if (!file) {
       return;
     }
@@ -46,19 +45,43 @@ function CreatePostPage() {
 
     if (!file.type.startsWith('image/')) {
       setError('Please select an image file.');
-      event.target.value = '';
       return;
     }
 
-    // Limit the original upload to 10 MB.
     if (file.size > 10 * 1024 * 1024) {
       setError('The image must be smaller than 10 MB.');
-      event.target.value = '';
       return;
     }
 
     setImageFile(file);
     setImagePreview(URL.createObjectURL(file));
+  }
+
+  function handleImageChange(event) {
+    const file = event.target.files[0];
+
+    handleSelectedImage(file);
+
+    // Allows the same file to be selected again later.
+    event.target.value = '';
+  }
+
+  function handleDragOver(event) {
+    event.preventDefault();
+    setIsDragging(true);
+  }
+
+  function handleDragLeave(event) {
+    event.preventDefault();
+    setIsDragging(false);
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    setIsDragging(false);
+
+    const file = event.dataTransfer.files[0];
+    handleSelectedImage(file);
   }
 
   // Resize and compress the image before sending it to the API.
@@ -225,7 +248,12 @@ function CreatePostPage() {
             Photo
           </label>
 
-          <div className="upload-area">
+          <div
+            className={`upload-area ${isDragging ? 'dragging' : ''}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          >
 
             {imagePreview ? (
               <div className="image-preview-container">

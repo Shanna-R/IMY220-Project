@@ -53,7 +53,7 @@ function SignupForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="form-card">
+    <form onSubmit={handleSubmit} className="auth-form">
       {error && (
         <p className="form-error">
           {error}
@@ -70,6 +70,7 @@ function SignupForm() {
         value={form.name}
         onChange={handleChange}
         placeholder="Full name"
+        required
       />
 
       <label htmlFor="signup-username">
@@ -82,6 +83,7 @@ function SignupForm() {
         value={form.username}
         onChange={handleChange}
         placeholder="Username"
+        required
       />
 
       <label htmlFor="signup-email">
@@ -95,6 +97,7 @@ function SignupForm() {
         value={form.email}
         onChange={handleChange}
         placeholder="you@example.com"
+        required
       />
 
       <label htmlFor="signup-password">
@@ -108,6 +111,7 @@ function SignupForm() {
         value={form.password}
         onChange={handleChange}
         placeholder="Password"
+        required
       />
 
       <button

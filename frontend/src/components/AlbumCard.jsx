@@ -62,7 +62,7 @@ function AlbumCard({ album }) {
         </p>
 
         <Link
-          to={`/album/${album._id}`}
+          to={`/albums/${album._id}`}
           className="btn btn-outline"
         >
           View Album

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 function Post({ post }) {
   const [liked, setLiked] = useState(
@@ -48,6 +48,31 @@ function Post({ post }) {
       setLiking(false);
     }
   }
+
+  const [commentsCount, setCommentsCount] = useState(
+    post.commentsCount || 0
+  );
+
+  useEffect(() => {
+    async function loadCommentCount() {
+      try {
+        const response = await fetch(
+          `/api/posts/${post._id}/comments/count`,
+          { credentials: 'include' }
+        );
+
+        const data = await response.json();
+
+        if (response.ok) {
+          setCommentsCount(data.count);
+        }
+      } catch (error) {
+        console.error('Unable to load comment count:', error);
+      }
+    }
+
+    loadCommentCount();
+  }, [post._id]);
 
   return (
     <article className="card post-detail">
@@ -129,7 +154,7 @@ function Post({ post }) {
         </span>
 
         <span>
-          💬 {post.commentsCount || 0} comments
+          💬 {commentsCount} comments
         </span>
 
       </div>

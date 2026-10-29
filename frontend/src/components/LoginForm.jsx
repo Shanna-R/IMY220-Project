@@ -41,7 +41,7 @@ function LoginForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="form-card">
+    <form onSubmit={handleSubmit} className="auth-form">
       {error && (
         <p className="form-error">
           {error}
@@ -58,6 +58,8 @@ function LoginForm() {
         value={email}
         onChange={(event) => setEmail(event.target.value)}
         placeholder="you@example.com"
+        autoComplete="email"
+        required
       />
 
       <label htmlFor="login-password">
@@ -66,10 +68,13 @@ function LoginForm() {
 
       <input
         id="login-password"
+        name="password"
         type="password"
         value={password}
         onChange={(event) => setPassword(event.target.value)}
         placeholder="Password"
+        autoComplete="current-password"
+        required
       />
 
       <button

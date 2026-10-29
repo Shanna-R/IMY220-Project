@@ -23,7 +23,7 @@ function Comments({ postId }) {
 
       if (!response.ok) {
         throw new Error(
-          data.error || 'Could not load comments.'
+          data.message || 'Could not load comments.'
         );
       }
 
@@ -63,7 +63,7 @@ function Comments({ postId }) {
 
       if (!response.ok) {
         throw new Error(
-          data.error || 'Could not add comment.'
+          data.message || 'Could not add comment.'
         );
       }
 
@@ -76,99 +76,92 @@ function Comments({ postId }) {
   }
 
   async function deleteComment(commentId) {
-    try {
-      const response = await fetch(
-        `/api/comments/${commentId}`,
-        {
-          method: 'DELETE',
-          credentials: 'include'
-        }
-      );
+  setError('');
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.error || 'Could not delete comment.'
-        );
+  try {
+    const response = await fetch(
+      `/api/comments/${commentId}`,
+      {
+        method: 'DELETE',
+        credentials: 'include'
       }
+    );
 
-      loadComments();
-    } catch (error) {
-      setError(error.message);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.message || 'Could not delete comment.'
+      );
     }
-  }
 
+    await loadComments();
+  } catch (error) {
+    setError(error.message);
+  }
+}
+
+  
   return (
-    <section >
-      <h2>
-        Comments
-      </h2>
+    <section className="comments">
+      <h2>Comments</h2>
 
       {error && (
-        <p className="form-error">
-          {error}
-        </p>
+        <p className="form-error">{error}</p>
       )}
 
-      <form onSubmit={addComment}>
-        <label htmlFor="comment-text">
-          Add a comment
-        </label>
-
-        <textarea
-          id="comment-text"
-          value={text}
-          onChange={(event) =>
-            setText(event.target.value)
-          }
-          placeholder="Write a comment..."
-        />
-
-        <button
-          type="submit"
-          className="btn"
-        >
-          Comment
-        </button>
-      </form>
-
+      {/* Existing comments */}
       <div className="comments-list">
         {comments.length === 0 ? (
-          <p>
-            No comments yet.
+          <p className="no-comments">
+            No comments yet. Be the first to comment!
           </p>
         ) : (
           comments.map((comment) => (
-            <article
-              className="comment"
-              key={comment._id}
-            >
-              <strong>
-                {comment.author?.name ||
-                  'Unknown User'}
-              </strong>
+            <article className="comment" key={comment._id}>
+              <div className="comment-content">
+                <strong className="comment-username">
+                  @{comment.author?.username || 'unknown'}
+                </strong>
 
-              <p>
-                {comment.text}
-              </p>
+                <p>{comment.text}</p>
 
-              {comment.userId === user?._id && (
-                <button
-                  className="btn btn-outline"
-                  onClick={() =>
-                    deleteComment(comment._id)
-                  }
-                >
-                  Delete
-                </button>
-              )}
+                {comment.authorId === user?._id && (
+                  <button
+                    type="button"
+                    className="comment-delete"
+                    onClick={() => deleteComment(comment._id)}
+                  >
+                    Delete
+                  </button>
+                )}
+              </div>
             </article>
           ))
         )}
       </div>
+
+      {/* Add comment at the bottom */}
+      <form className="comment-form" onSubmit={addComment}>
+        <textarea
+          id="comment-text"
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          placeholder="Add a comment..."
+          rows={1}
+        />
+
+        <button
+          type="submit"
+          className="comment-submit"
+          disabled={!text.trim()}
+        >
+          Post
+        </button>
+      </form>
     </section>
   );
+
 }
 
 export default Comments;

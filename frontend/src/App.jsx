@@ -8,6 +8,7 @@ import SearchPage from './pages/SearchPage';
 import FriendsPage from './pages/FriendsPage';
 import CreatePostPage from './pages/CreatePostPage';
 import EditProfilePage from './pages/EditProfilePage';
+import HiddenPosts from './pages/HiddenPosts';
 
 import AlbumsPage from './pages/AlbumsPage';
 import AlbumPage from './pages/AlbumPage';
@@ -97,7 +98,7 @@ function App() {
       />
 
       <Route
-        path="/album/:id"
+        path="/albums/:id"
         element={
           <ProtectedRoute>
             <AlbumPage />
@@ -110,6 +111,15 @@ function App() {
         element={
           <ProtectedRoute>
             <CreateAlbumPage />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/hidden-posts"
+        element={
+          <ProtectedRoute>
+            <HiddenPosts />
           </ProtectedRoute>
         }
       />

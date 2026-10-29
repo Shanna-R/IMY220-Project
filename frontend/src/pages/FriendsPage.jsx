@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { getAvatarUrl } from '../assets/avatar';
 
 import Header from '../components/Header';
 
@@ -151,11 +152,11 @@ function FriendsPage() {
                       key={person._id}
                     >
 
-                      <div className="avatar">
-                        {person.name
-                          ?.charAt(0)
-                          .toUpperCase()}
-                      </div>
+                      <img
+                        src={getAvatarUrl(person)}
+                        alt={person.name || 'User'}
+                        className="avatar"
+                      />
 
                       <h3>
                         {person.name}
@@ -224,11 +225,11 @@ function FriendsPage() {
                       key={friend._id}
                     >
 
-                      <div className="avatar">
-                        {friend.name
-                          ?.charAt(0)
-                          .toUpperCase()}
-                      </div>
+                      <img
+                        src={getAvatarUrl(friend)}
+                        alt={friend.name || 'User'}
+                        className="avatar"
+                      />
 
                       <h3>
                         {friend.name}

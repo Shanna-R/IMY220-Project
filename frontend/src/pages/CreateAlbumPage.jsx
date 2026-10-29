@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import Header from '../components/Header';
+import HashtagSuggestions from '../components/HashtagSuggestions';
 
 function CreateAlbumPage() {
   const navigate = useNavigate();
@@ -65,7 +66,7 @@ function CreateAlbumPage() {
         );
       }
 
-      navigate(`/album/${data.album._id}`);
+      navigate(`/albums/${data.album._id}`);
     } catch (error) {
       setError(error.message);
     } finally {
@@ -117,15 +118,13 @@ function CreateAlbumPage() {
             placeholder="Album description"
           />
 
-          <label>
-            Hashtags
-          </label>
+          <label htmlFor="album-hashtags">Hashtags</label>
+          <input id="album-hashtags" name="hashtags" value={form.hashtags}
+                onChange={handleChange} placeholder="camping, scouts" />
 
-          <input
-            name="hashtags"
+          <HashtagSuggestions
             value={form.hashtags}
-            onChange={handleChange}
-            placeholder="camping, scouts"
+            onChange={(value) => setForm({ ...form, hashtags: value })}
           />
 
           <button

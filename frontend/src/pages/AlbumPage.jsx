@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
@@ -11,74 +12,65 @@ function AlbumPage() {
 
   const [album, setAlbum] = useState(null);
   const [posts, setPosts] = useState([]);
+  const [availablePosts, setAvailablePosts] = useState([]);
 
   const [editing, setEditing] = useState(false);
-
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [hashtags, setHashtags] = useState('');
 
-  const [availablePosts, setAvailablePosts] = useState([]);
-
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(true);
 
   async function loadAlbum() {
     try {
-      const response = await fetch(
-        `/api/albums/${id}`,
-        {
-          credentials: 'include'
-        }
-      );
+      setError('');
+
+      const response = await fetch(`/api/albums/${id}`, {
+        credentials: 'include'
+      });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(
-          data.error || 'Could not load album.'
-        );
+        throw new Error(data.message || 'Could not load album.');
       }
 
       setAlbum(data.album);
       setPosts(data.posts || []);
 
       setName(data.album.name || '');
-      setDescription(
-        data.album.description || ''
-      );
-
-      setHashtags(
-        data.album.hashtags?.join(', ') || ''
-      );
+      setDescription(data.album.description || '');
+      setHashtags(data.album.hashtags?.join(', ') || '');
     } catch (error) {
       setError(error.message);
+    } finally {
+      setLoading(false);
     }
   }
 
   async function loadAvailablePosts() {
     try {
-      const response = await fetch(
-        '/api/posts',
-        {
-          credentials: 'include'
-        }
-      );
+      const response = await fetch('/api/posts', {
+        credentials: 'include'
+      });
 
       const data = await response.json();
 
-      if (response.ok) {
-        setAvailablePosts(
-          (data.posts || []).filter(
-            (post) =>
-              post.userId === user?._id
-          )
+      if (!response.ok) {
+        throw new Error(
+          data.message || data.error || 'Could not load posts.'
         );
       }
-    } catch (error) {
-      console.error(
-        'Could not load posts:',
-        error
+
+      // Only show posts created by the logged-in user.
+      setAvailablePosts(
+        (data.posts || []).filter(
+          (post) => String(post.authorId) === String(user?._id)
+        )
       );
+    } catch (error) {
+      setError(error.message);
     }
   }
 
@@ -90,45 +82,40 @@ function AlbumPage() {
     if (user) {
       loadAvailablePosts();
     }
-  }, [user, album]);
+  }, [user]);
 
   async function updateAlbum(event) {
     event.preventDefault();
 
     try {
-      const response = await fetch(
-        `/api/albums/${id}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          credentials: 'include',
-          body: JSON.stringify({
-            name,
-            description,
-            hashtags: hashtags
-              .split(',')
-              .map((tag) =>
-                tag.trim().replace(/^#/, '')
-              )
-              .filter(Boolean)
-          })
-        }
-      );
+      setError('');
+
+      const response = await fetch(`/api/albums/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          name,
+          description,
+          hashtags: hashtags
+            .split(',')
+            .map((tag) => tag.trim().replace(/^#/, ''))
+            .filter(Boolean)
+        })
+      });
 
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(
-          data.error || 'Could not update album.'
+          data.message || data.error || 'Could not update album.'
         );
       }
 
-      setAlbum(data.album);
+      await loadAlbum();
       setEditing(false);
-
-      loadAlbum();
     } catch (error) {
       setError(error.message);
     }
@@ -136,7 +123,7 @@ function AlbumPage() {
 
   async function deleteAlbum() {
     const confirmed = window.confirm(
-      'Delete this album?'
+      'Delete this album? This will not delete the original posts.'
     );
 
     if (!confirmed) {
@@ -144,19 +131,18 @@ function AlbumPage() {
     }
 
     try {
-      const response = await fetch(
-        `/api/albums/${id}`,
-        {
-          method: 'DELETE',
-          credentials: 'include'
-        }
-      );
+      setError('');
+
+      const response = await fetch(`/api/albums/${id}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
 
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(
-          data.error || 'Could not delete album.'
+          data.message || data.error || 'Could not delete album.'
         );
       }
 
@@ -168,6 +154,8 @@ function AlbumPage() {
 
   async function addPost(postId) {
     try {
+      setError('');
+
       const response = await fetch(
         `/api/albums/${id}/posts/${postId}`,
         {
@@ -180,11 +168,13 @@ function AlbumPage() {
 
       if (!response.ok) {
         throw new Error(
-          data.error || 'Could not add post.'
+          data.message || data.error || 'Could not add post.'
         );
       }
 
-      loadAlbum();
+      // Refresh both lists so the added post moves into the album.
+      await loadAlbum();
+      await loadAvailablePosts();
     } catch (error) {
       setError(error.message);
     }
@@ -192,6 +182,8 @@ function AlbumPage() {
 
   async function removePost(postId) {
     try {
+      setError('');
+
       const response = await fetch(
         `/api/albums/${id}/posts/${postId}`,
         {
@@ -204,84 +196,103 @@ function AlbumPage() {
 
       if (!response.ok) {
         throw new Error(
-          data.error || 'Could not remove post.'
+          data.message || data.error || 'Could not remove post.'
         );
       }
 
-      loadAlbum();
+      await loadAlbum();
     } catch (error) {
       setError(error.message);
     }
+  }
+
+  if (loading) {
+    return (
+      <>
+        <Header />
+        <main className="container album-page">
+          <p>Loading album...</p>
+        </main>
+      </>
+    );
   }
 
   if (!album) {
     return (
       <>
         <Header />
+        <main className="container album-page">
+          <Link to="/albums" className="album-back-link">
+            ← Back to Albums
+          </Link>
 
-        <main className="container">
-          {error ? (
-            <p className="form-error">
-              {error}
-            </p>
-          ) : (
-            <p>Loading album...</p>
+          {error && (
+            <p className="form-error album-error">{error}</p>
           )}
+
+          {!error && <p>Album not found.</p>}
         </main>
       </>
     );
   }
 
-  const ownAlbum = user?._id === album.userId;
+  const ownAlbum =
+    String(user?._id) === String(album.ownerId);
+
+  // Compare IDs as strings to avoid string/ObjectId mismatches.
+  const albumPostIds = (album.postIds || []).map(String);
+
+  const postsToAdd = availablePosts.filter(
+    (post) => !albumPostIds.includes(String(post._id))
+  );
 
   return (
-    <div>
+    <>
       <Header />
 
-      <main className="container">
-        <Link to="/albums">
+      <main className="container album-page">
+        <Link to="/albums" className="album-back-link">
           ← Back to Albums
         </Link>
 
         {error && (
-          <p className="form-error">
-            {error}
-          </p>
+          <p className="form-error album-error">{error}</p>
         )}
 
         {!editing ? (
           <>
-            <section className="card">
-              <h1>
-                {album.name}
-              </h1>
+            {/* Album heading and information */}
+            <section className="album-header">
+              <h1>{album.name}</h1>
 
-              <p>
-                {album.description}
-              </p>
+              {album.description && (
+                <p className="album-description">
+                  {album.description}
+                </p>
+              )}
 
-              <p>
-                {album.hashtags?.map(
-                  (tag) => `#${tag} `
-                )}
-              </p>
+              {album.hashtags?.length > 0 && (
+                <p className="album-hashtags">
+                  {album.hashtags.map((tag) => `#${tag}`).join(' ')}
+                </p>
+              )}
 
-              <p>
-                {posts.length} posts
-              </p>
+              <span className="album-post-count">
+                {posts.length} {posts.length === 1 ? 'post' : 'posts'}
+              </span>
 
               {ownAlbum && (
-                <div>
+                <div className="album-actions">
                   <button
-                    className="btn"
-                    onClick={() =>
-                      setEditing(true)
-                    }
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => setEditing(true)}
                   >
                     Edit Album
                   </button>
 
                   <button
+                    type="button"
                     className="btn btn-danger"
                     onClick={deleteAlbum}
                   >
@@ -291,142 +302,180 @@ function AlbumPage() {
               )}
             </section>
 
-            <section>
-              <h2>
-                Posts in Album
-              </h2>
+            {/* Posts already in the album */}
+            <section className="album-section">
+              <h2>Posts in Album</h2>
 
-              {posts.map((post) => (
-                <article
-                  className="card"
-                  key={post._id}
-                >
-                  <h3>
-                    {post.title}
-                  </h3>
-
-                  <p>
-                    {post.description}
-                  </p>
-
-                  <Link
-                    to={`/post/${post._id}`}
-                    className="btn btn-outline"
-                  >
-                    View Post
-                  </Link>
-
-                  {ownAlbum && (
-                    <button
-                      className="btn btn-danger"
-                      onClick={() =>
-                        removePost(post._id)
-                      }
-                    >
-                      Remove
-                    </button>
-                  )}
-                </article>
-              ))}
-            </section>
-
-            {ownAlbum && (
-              <section>
-                <h2>
-                  Add Your Posts
-                </h2>
-
-                {availablePosts
-                  .filter(
-                    (post) =>
-                      !album.postIds?.includes(
-                        post._id
-                      )
-                  )
-                  .map((post) => (
+              {posts.length === 0 ? (
+                <p className="album-empty">
+                  This album is empty. Add some of your posts below!
+                </p>
+              ) : (
+                <div className="album-post-grid">
+                  {posts.map((post) => (
                     <article
-                      className="card"
+                      className="album-post-card"
                       key={post._id}
                     >
-                      <h3>
-                        {post.title}
-                      </h3>
+                      {post.imageUrl ? (
+                        <img
+                          src={post.imageUrl}
+                          alt={post.title || 'Post image'}
+                          className="album-post-image"
+                        />
+                      ) : (
+                        <div className="album-post-image-placeholder">
+                          📷
+                        </div>
+                      )}
 
-                      <button
-                        className="btn"
-                        onClick={() =>
-                          addPost(post._id)
-                        }
-                      >
-                        Add to Album
-                      </button>
+                      <div className="album-post-content">
+                        <h3>{post.title || 'Untitled post'}</h3>
+
+                        {post.description && (
+                          <p className="album-post-description">
+                            {post.description}
+                          </p>
+                        )}
+
+                        <div className="album-post-actions">
+                          <Link
+                            to={`/post/${post._id}`}
+                            className="btn btn-outline"
+                          >
+                            View Post
+                          </Link>
+
+                          {ownAlbum && (
+                            <button
+                              type="button"
+                              className="btn btn-danger"
+                              onClick={() => removePost(post._id)}
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </article>
                   ))}
+                </div>
+              )}
+            </section>
+
+            {/* Posts the owner can add */}
+            {ownAlbum && (
+              <section className="album-section album-add-section">
+                <h2>Add Your Posts</h2>
+
+                <p>
+                  Choose one of your posts to include in this album.
+                </p>
+
+                {postsToAdd.length === 0 ? (
+                  <p className="album-empty">
+                    You have no more posts to add to this album.
+                  </p>
+                ) : (
+                  <div className="album-post-grid">
+                    {postsToAdd.map((post) => (
+                      <article
+                        className="album-post-card"
+                        key={post._id}
+                      >
+                        {post.imageUrl ? (
+                          <img
+                            src={post.imageUrl}
+                            alt={post.title || 'Post image'}
+                            className="album-post-image"
+                          />
+                        ) : (
+                          <div className="album-post-image-placeholder">
+                            📷
+                          </div>
+                        )}
+
+                        <div className="album-post-content">
+                          <h3>{post.title || 'Untitled post'}</h3>
+
+                          {post.description && (
+                            <p className="album-post-description">
+                              {post.description}
+                            </p>
+                          )}
+
+                          <div className="album-post-actions">
+                            <button
+                              type="button"
+                              className="btn btn-primary"
+                              onClick={() => addPost(post._id)}
+                            >
+                              Add to Album
+                            </button>
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                )}
               </section>
             )}
           </>
         ) : (
           <form
-            className="form-card"
+            className="card album-edit-form"
             onSubmit={updateAlbum}
           >
-            <h2>
-              Edit Album
-            </h2>
+            <h2>Edit Album</h2>
 
-            <label>
-              Name
-            </label>
-
+            <label htmlFor="album-name">Name</label>
             <input
+              id="album-name"
               value={name}
-              onChange={(event) =>
-                setName(event.target.value)
-              }
+              onChange={(event) => setName(event.target.value)}
+              required
             />
 
-            <label>
-              Description
-            </label>
-
+            <label htmlFor="album-description">Description</label>
             <textarea
+              id="album-description"
               value={description}
-              onChange={(event) =>
-                setDescription(event.target.value)
-              }
+              onChange={(event) => setDescription(event.target.value)}
             />
 
-            <label>
-              Hashtags
+            <label htmlFor="album-hashtags">
+              Hashtags (separate with commas)
             </label>
-
             <input
+              id="album-hashtags"
               value={hashtags}
-              onChange={(event) =>
-                setHashtags(event.target.value)
-              }
+              onChange={(event) => setHashtags(event.target.value)}
+              placeholder="travel, friends, memories"
             />
+            <HashtagSuggestions value={hashtags} onChange={setHashtags} />
 
-            <button
-              type="submit"
-              className="btn"
-            >
-              Save
-            </button>
+            <div className="album-form-actions">
+              <button type="submit" className="btn btn-primary">
+                Save Changes
+              </button>
 
-            <button
-              type="button"
-              className="btn btn-outline"
-              onClick={() =>
-                setEditing(false)
-              }
-            >
-              Cancel
-            </button>
+              <button
+                type="button"
+                className="btn btn-outline"
+                onClick={() => {
+                  setEditing(false);
+                  setName(album.name || '');
+                  setDescription(album.description || '');
+                  setHashtags(album.hashtags?.join(', ') || '');
+                }}
+              >
+                Cancel
+              </button>
+            </div>
           </form>
         )}
       </main>
-    </div>
+    </>
   );
 }
 

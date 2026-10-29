@@ -2,6 +2,8 @@ import { NavLink, Link, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../context/AuthContext';
 import logo from '../assets/logo.png';
+import ThemeToggle from './ThemeToggle';
+import NotificationBell from './NotificationBell';
 
 function Header() {
   const { user, logout } = useAuth();
@@ -58,7 +60,8 @@ function Header() {
 
         </nav>
 
-        {/* User information on the right */}
+        
+        {/* User information and theme toggle on the right */}
         {user && (
           <div className="header-user">
 
@@ -85,8 +88,12 @@ function Header() {
               </span>
             </Link>
 
+            <NotificationBell />
+            <ThemeToggle />
+
           </div>
         )}
+
 
       </div>
     </header>

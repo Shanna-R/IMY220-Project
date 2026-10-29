@@ -1,7 +1,7 @@
 import PostPreview from './PostPreview';
 import AlbumCard from './AlbumCard';
 
-function Feed({ activities }) {
+function Feed({ activities, scope }) {
   return (
     <section className="feed">
       {activities.map((activity) => {
@@ -18,6 +18,7 @@ function Feed({ activities }) {
           <PostPreview
             key={`post-${activity._id}`}
             post={activity}
+            scope={scope}
           />
         );
       })}

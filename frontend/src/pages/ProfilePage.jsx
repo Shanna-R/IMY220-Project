@@ -7,6 +7,7 @@ import Profile from '../components/Profile';
 import UserPosts from '../components/UserPosts';
 import Friends from '../components/Friends';
 import EditProfile from '../components/EditProfile';
+import UserAlbums from '../components/UserAlbums';
 
 function ProfilePage() {
   const { id } = useParams();
@@ -128,13 +129,11 @@ function ProfilePage() {
     );
   }
 
-  const isOwnProfile =
-    user &&
-    user._id === profile._id;
+  const isOwnProfile = user && user._id === profile._id;
 
-  const canViewFriends =
-    isOwnProfile ||
-    profile.isFriend;
+  const canViewFullProfile = isOwnProfile || profile.isFriend;
+
+  const canViewFriends = canViewFullProfile;
 
   /*
     Show the edit form instead of
@@ -187,53 +186,48 @@ function ProfilePage() {
             }
           />
 
-          <div className="profile-tabs">
+          
+          {canViewFullProfile && (
+            <>
+              <div className="profile-tabs">
+                <button
+                  type="button"
+                  className={activeTab === 'posts' ? 'active' : ''}
+                  onClick={() => setActiveTab('posts')}
+                >
+                  Posts
+                </button>
 
-            <button
-              type="button"
-              className={
-                activeTab === 'posts'
-                  ? 'active'
-                  : ''
-              }
-              onClick={() =>
-                setActiveTab('posts')
-              }
-            >
-              Posts
-            </button>
+                <button
+                  type="button"
+                  className={activeTab === 'friends' ? 'active' : ''}
+                  onClick={() => setActiveTab('friends')}
+                >
+                  Friends
+                </button>
 
-            {canViewFriends && (
-              <button
-                type="button"
-                className={
-                  activeTab === 'friends'
-                    ? 'active'
-                    : ''
-                }
-                onClick={() =>
-                  setActiveTab('friends')
-                }
-              >
-                Friends
-              </button>
-            )}
+                <button
+                  type="button"
+                  className={activeTab === 'albums' ? 'active' : ''}
+                  onClick={() => setActiveTab('albums')}
+                >
+                  Albums
+                </button>
+              </div>
 
-          </div>
+              {activeTab === 'posts' && (
+                <UserPosts userId={id} />
+              )}
 
-          {activeTab === 'posts' && (
-            <UserPosts
-              userId={id}
-            />
+              {activeTab === 'friends' && canViewFriends && (
+                <Friends userId={id} />
+              )}
+
+              {activeTab === 'albums' && (
+                <UserAlbums userId={profile._id} />
+              )}
+            </>
           )}
-
-          {activeTab === 'friends' &&
-            canViewFriends && (
-              <Friends
-                userId={id}
-              />
-            )}
-
         </div>
       </main>
     </>

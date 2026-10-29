@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import AlbumCard from '../components/AlbumCard';
 
 import Header from '../components/Header';
 
@@ -8,6 +10,8 @@ function AlbumsPage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  const { user } = useAuth();
 
   async function loadAlbums() {
     try {
@@ -69,7 +73,7 @@ function AlbumsPage() {
         );
       }
 
-      loadAlbums();
+      await loadAlbums();
     } catch (error) {
       setError(error.message);
     }
@@ -123,78 +127,76 @@ function AlbumsPage() {
         ) : (
 
         <section className="album-grid">
+          {albums.map((album) => {
+            const ownAlbum =
+              String(album.ownerId) === String(user?._id);
 
-          {albums.map((album) => (
-
-            <article
-              className="card album-card"
-              key={album._id}
-            >
-
-              {album.coverImage ? (
-                <img
-                  src={album.coverImage}
-                  alt={album.name}
-                  className="album-cover-image"
-                />
-              ) : (
-                <div className="album-cover">
-                  📷
-                </div>
-              )}
-
-              <div className="album-info">
-
-                <strong>
-                  {album.name}
-                </strong>
-
-                <p>
-                  {album.description}
-                </p>
-
-                {album.owner && (
-                  <p>
-                    Created by{' '}
-
-                    <Link
-                      to={`/users/${album.owner._id}`}
-                    >
-                      {album.owner.name}
-                    </Link>
-                  </p>
+            return (
+              <article className="card album-card" key={album._id}>
+                {album.coverImage ? (
+                  <img
+                    src={album.coverImage}
+                    alt={album.name}
+                    className="album-cover-image"
+                  />
+                ) : (
+                  <div className="album-cover">📷</div>
                 )}
 
-                <small>
-                  {album.postIds?.length || 0} posts
-                </small>
+                <div className="album-info">
+                  <p className="activity-label">
+                    {ownAlbum ? 'Your Album' : 'Community Album'}
+                  </p>
 
-                <div className="friend-actions">
+                  <h2>{album.name}</h2>
 
-                  <Link
-                    to={`/album/${album._id}`}
-                    className="btn btn-outline"
-                  >
-                    View
-                  </Link>
+                  <p>{album.description}</p>
 
-                  <button
-                    className="btn btn-danger"
-                    onClick={() =>
-                      deleteAlbum(album._id)
-                    }
-                  >
-                    Delete
-                  </button>
+                  {album.owner && (
+                    <p>
+                      Created by{' '}
+                      <Link to={`/users/${album.owner._id}`}>
+                        {album.owner.name || album.owner.username}
+                      </Link>
+                    </p>
+                  )}
 
+                  {album.hashtags?.length > 0 && (
+                    <p className="hashtags">
+                      {album.hashtags.map((tag) => (
+                        <Link
+                          key={tag}
+                          to={`/search?q=${encodeURIComponent(tag)}`}
+                        >
+                          #{tag}{' '}
+                        </Link>
+                      ))}
+                    </p>
+                  )}
+
+                  <p>{album.postIds?.length || 0} posts</p>
+
+                  <div className="friend-actions">
+                    <Link
+                      to={`/albums/${album._id}`}
+                      className="btn btn-outline"
+                    >
+                      View Album
+                    </Link>
+
+                    {ownAlbum && (
+                      <button
+                        className="btn btn-danger"
+                        onClick={() => deleteAlbum(album._id)}
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
                 </div>
-
-              </div>
-
-            </article>
-
-          ))}
-
+              </article>
+            );
+          })}
         </section>
         )}
 

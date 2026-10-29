@@ -2,369 +2,338 @@ import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 
 import Header from '../components/Header';
+import { getAvatarUrl } from '../assets/avatar';
 
 function SearchPage() {
-const [searchParams, setSearchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
-const initialQuery = searchParams.get('q') || '';
+  const [query, setQuery] = useState(searchParams.get('q') || '');
 
-const [query, setQuery] = useState(initialQuery);
+  const [results, setResults] = useState({
+    users: [],
+    posts: [],
+    albums: []
+  });
 
-const [results, setResults] = useState({
-users: [],
-posts: [],
-albums: []
-});
+  const [activeFilter, setActiveFilter] = useState('users');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-const [activeFilter, setActiveFilter] = useState('all');
+  // Update the input when the URL query changes.
+  useEffect(() => {
+    setQuery(searchParams.get('q') || '');
+  }, [searchParams]);
 
-const [loading, setLoading] = useState(false);
-const [error, setError] = useState('');
+  // Search automatically while the user types.
+  useEffect(() => {
+    const searchTerm = query.trim().replace(/^#/, '');
+    let cancelled = false;
 
-async function performSearch(searchTerm) {
-if (!searchTerm.trim()) {
-setResults({
-users: [],
-posts: [],
-albums: []
-});
-
-  return;
-}
-
-try {
-  setLoading(true);
-  setError('');
-
-  const response = await fetch(
-    `/api/search?q=${encodeURIComponent(searchTerm)}`,
-    {
-      credentials: 'include'
+    if (!searchTerm) {
+      setResults({ users: [], posts: [], albums: [] });
+      setLoading(false);
+      setError('');
+      return;
     }
-  );
 
-  const data = await response.json();
+    const timer = setTimeout(async () => {
+      try {
+        setLoading(true);
+        setError('');
 
-  if (!response.ok) {
-    throw new Error(
-      data.error || data.message || 'Search failed.'
+        const response = await fetch(
+          `/api/search?q=${encodeURIComponent(searchTerm)}`,
+          { credentials: 'include' }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || data.message || 'Search failed.');
+        }
+
+        if (!cancelled) {
+          setResults({
+            users: data.users || [],
+            posts: data.posts || [],
+            albums: data.albums || []
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Search error:', error);
+          setError(error.message || 'Search failed.');
+          setResults({ users: [], posts: [], albums: [] });
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
+
+  function handleSubmit(event) {
+    event.preventDefault();
+
+    const trimmedQuery = query.trim().replace(/^#/, '');
+
+    setQuery(trimmedQuery);
+    setSearchParams(
+      trimmedQuery ? { q: trimmedQuery } : {},
+      { replace: true }
     );
   }
 
-  setResults({
-    users: data.users || [],
-    posts: data.posts || [],
-    albums: data.albums || []
-  });
+  function renderHashtags(hashtags = []) {
+    if (!hashtags.length) return null;
 
-} catch (error) {
-  console.error('Search error:', error);
-  setError(error.message);
-} finally {
-  setLoading(false);
-}
+    return (
+      <div className="post-hashtags">
+        {hashtags.map((tag) => {
+          const cleanTag = String(tag).replace(/^#/, '');
 
-}
-
-useEffect(() => {
-if (initialQuery) {
-performSearch(initialQuery);
-}
-}, []);
-
-function handleSubmit(event) {
-event.preventDefault();
-
-const trimmedQuery = query.trim();
-
-setSearchParams({
-  q: trimmedQuery
-});
-
-performSearch(trimmedQuery);
-
-}
-
-function showUsers() {
-return (
-<section>
-<h2 className="section-title">
-Users
-</h2>
-
-    {results.users.length === 0 ? (
-      <div className="empty-state">
-        <p>No users found.</p>
+          return (
+            <Link
+              key={tag}
+              to={`/search?q=${encodeURIComponent(cleanTag)}`}
+              className="hashtag"
+            >
+              #{cleanTag}
+            </Link>
+          );
+        })}
       </div>
-    ) : (
+    );
+  }
+
+  function showUsers() {
+    if (results.users.length === 0) {
+      return (
+        <div className="empty-state">
+          <p>No users found.</p>
+        </div>
+      );
+    }
+
+    return (
       <div className="search-results">
-        {results.users.map((user) => (
-          <Link
-            key={user._id}
-            to={`/users/${user._id}`}
-            className="search-result"
-          >
-            <div className="avatar">
-              {user.name?.charAt(0)?.toUpperCase() || '?'}
-            </div>
+        {results.users.map((searchUser) => (
+          <div key={searchUser._id} className="card search-result">
+            <div className="suggested-friend-row">
+              <Link
+                to={`/users/${searchUser._id}`}
+                className="suggested-friend-link"
+              >
+                <img
+                  src={getAvatarUrl(searchUser)}
+                  alt={searchUser.name || 'User'}
+                  className="suggested-friend-avatar"
+                />
 
-            <div>
-              <strong>
-                {user.name}
-              </strong>
+                <div className="suggested-friend-info">
+                  <p className="suggested-friend-name">
+                    {searchUser.name || 'Unnamed user'}
+                  </p>
 
-              <p>
-                @{user.username}
-              </p>
+                  {searchUser.username && (
+                    <p className="suggested-friend-username">
+                      @{searchUser.username}
+                    </p>
+                  )}
+
+                  {searchUser.email && (
+                    <p className="search-result-email">
+                      {searchUser.email}
+                    </p>
+                  )}
+                </div>
+              </Link>
+
+              <Link
+                to={`/users/${searchUser._id}`}
+                className="suggested-friend-view"
+              >
+                View
+              </Link>
             </div>
-          </Link>
+          </div>
         ))}
       </div>
-    )}
-  </section>
-);
+    );
+  }
 
-}
+  function showPosts() {
+    if (results.posts.length === 0) {
+      return (
+        <div className="empty-state">
+          <p>No posts found.</p>
+        </div>
+      );
+    }
 
-function showPosts() {
-return (
-<section>
-<h2 className="section-title">
-Posts
-</h2>
-
-    {results.posts.length === 0 ? (
-      <div className="empty-state">
-        <p>No posts found.</p>
-      </div>
-    ) : (
+    return (
       <div className="search-results">
         {results.posts.map((post) => (
-          <Link
-            key={post._id}
-            to={`/post/${post._id}`}
-            className="search-result"
-          >
-            <div>
-              <strong>
-                {post.title}
-              </strong>
+          <div key={post._id} className="card search-result">
+            <Link to={`/post/${post._id}`} className="search-result-content">
+              <strong>{post.title || 'Post'}</strong>
 
               <p>
-                {post.description}
+                {post.description || 'No description available.'}
               </p>
 
-              {post.hashtags?.length > 0 && (
-                <div className="post-hashtags">
-                  {post.hashtags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="hashtag"
-                    >
-                      {tag} 
-                    </span>
-                  ))}
-                </div>
+              {post.author && (
+                <p className="search-result-owner">
+                  By {post.author.name}
+                  {post.author.username && ` (@${post.author.username})`}
+                </p>
               )}
-            </div>
-          </Link>
+            </Link>
+
+            {renderHashtags(post.hashtags)}
+          </div>
         ))}
       </div>
-    )}
-  </section>
-);
+    );
+  }
 
-}
+  function showAlbums() {
+    if (results.albums.length === 0) {
+      return (
+        <div className="empty-state">
+          <p>No albums found.</p>
+        </div>
+      );
+    }
 
-function showAlbums() {
-return (
-<section>
-<h2 className="section-title">
-Albums
-</h2>
-
-    {results.albums.length === 0 ? (
-      <div className="empty-state">
-        <p>No albums found.</p>
-      </div>
-    ) : (
+    return (
       <div className="search-results">
         {results.albums.map((album) => (
-          <Link
-            key={album._id}
-            to={`/albums/${album._id}`}
-            className="search-result"
-          >
-            <div>
-              <strong>
-                {album.name}
-              </strong>
+          <div key={album._id} className="card search-result">
+            <Link
+              to={`/albums/${album._id}`}
+              className="search-result-content"
+            >
+              <strong>{album.name || 'Untitled album'}</strong>
 
               <p>
-                {album.description}
+                {album.description || 'No description available.'}
               </p>
 
-              {album.hashtags?.length > 0 && (
-                <div className="post-hashtags">
-                  {album.hashtags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="hashtag"
-                    >
-                      {tag} 
-                    </span>
-                  ))}
-                </div>
+              {album.owner && (
+                <p className="search-result-owner">
+                  By {album.owner.name}
+                  {album.owner.username && ` (@${album.owner.username})`}
+                </p>
               )}
-            </div>
-          </Link>
+            </Link>
+
+            {renderHashtags(album.hashtags)}
+          </div>
         ))}
       </div>
-    )}
-  </section>
-);
+    );
+  }
 
-}
+  const tabs = [
+    { id: 'users', label: 'Users' },
+    { id: 'posts', label: 'Posts' },
+    { id: 'albums', label: 'Albums' }
+  ];
 
-return (
-<div className="page">
+  return (
+    <div className="page">
+      <Header />
 
-  <Header />
+      <main className="container">
+        <h1 className="page-title">Search</h1>
 
-  <main className="container">
+        <form className="search-form" onSubmit={handleSubmit}>
+          <input
+            type="text"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search users, posts, albums or hashtags..."
+            aria-label="Search users, posts, albums or hashtags"
+          />
 
-    <h1 className="page-title">
-      Search
-    </h1>
+          <button type="submit" className="btn btn-primary">
+            🔍︎
+          </button>
+        </form>
 
-    <form
-      className="search-form"
-      onSubmit={handleSubmit}
-    >
-      <input
-        value={query}
-        onChange={(event) =>
-          setQuery(event.target.value)
-        }
-        placeholder="Search users, posts, albums or hashtags..."
-      />
-
-      <button
-        type="submit"
-        className="btn btn-primary"
-      >
-        Search
-      </button>
-    </form>
-
-    {loading && (
-      <p className="loading">
-        Searching...
-      </p>
-    )}
-
-    {error && (
-      <p className="form-error">
-        {error}
-      </p>
-    )}
-
-    {!loading && !error && query.trim() && (
-      <>
         <div className="search-tabs">
+          {tabs.map((tab) => {
+            const count =
+              tab.id === 'users'
+                ? results.users.length
+                : tab.id === 'posts'
+                  ? results.posts.length
+                  : results.albums.length;
 
-          <button
-            type="button"
-            className={
-              activeFilter === 'all'
-                ? 'active'
-                : ''
-            }
-            onClick={() =>
-              setActiveFilter('all')
-            }
-          >
-            All
-          </button>
-
-          <button
-            type="button"
-            className={
-              activeFilter === 'users'
-                ? 'active'
-                : ''
-            }
-            onClick={() =>
-              setActiveFilter('users')
-            }
-          >
-            Users ({results.users.length})
-          </button>
-
-          <button
-            type="button"
-            className={
-              activeFilter === 'posts'
-                ? 'active'
-                : ''
-            }
-            onClick={() =>
-              setActiveFilter('posts')
-            }
-          >
-            Posts ({results.posts.length})
-          </button>
-
-          <button
-            type="button"
-            className={
-              activeFilter === 'albums'
-                ? 'active'
-                : ''
-            }
-            onClick={() =>
-              setActiveFilter('albums')
-            }
-          >
-            Albums ({results.albums.length})
-          </button>
-
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                className={activeFilter === tab.id ? 'active' : ''}
+                onClick={() => setActiveFilter(tab.id)}
+              >
+                {tab.label} ({count})
+              </button>
+            );
+          })}
         </div>
 
-        {activeFilter === 'all' && (
-          <>
-            {showUsers()}
-            {showPosts()}
-            {showAlbums()}
-          </>
+        {loading && <p className="loading">Searching...</p>}
+
+        {error && <p className="form-error">{error}</p>}
+
+        {!loading && !error && !query.trim() && (
+          <div className="empty-state">
+            <h2>Search Woggle</h2>
+            <p>Search for users, posts, albums or hashtags.</p>
+          </div>
         )}
 
-        {activeFilter === 'users' && showUsers()}
+        {!loading && !error && query.trim() && (
+          <>
+            {activeFilter === 'users' && (
+              <>
+                <h2 className="section-title">
+                  Users
+                </h2>
+                {showUsers()}
+              </>
+            )}
 
-        {activeFilter === 'posts' && showPosts()}
+            {activeFilter === 'posts' && (
+              <>
+                <h2 className="section-title">
+                  Posts
+                </h2>
+                {showPosts()}
+              </>
+            )}
 
-        {activeFilter === 'albums' && showAlbums()}
-
-      </>
-    )}
-
-    {!loading && !error && !query.trim() && (
-      <div className="empty-state">
-        <h2>
-          Search Woggle
-        </h2>
-
-        <p>
-          Search for users, posts, albums or hashtags.
-        </p>
-      </div>
-    )}
-
-  </main>
-
-</div>
-
-);
+            {activeFilter === 'albums' && (
+              <>
+                <h2 className="section-title">
+                  Albums
+                </h2>
+                {showAlbums()}
+              </>
+            )}
+          </>
+        )}
+      </main>
+    </div>
+  );
 }
 
 export default SearchPage;

@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom';
+import FavouriteButton from './FavouriteButton';
+import { getAvatarUrl } from '../assets/avatar';
 
-function PostPreview({ post }) {
+function PostPreview({ post, scope }) {
   if (post.hidden) {
     return (
       <article className="card post-preview">
@@ -25,9 +27,11 @@ function PostPreview({ post }) {
 
       <div className="post-preview-header">
 
-        <div className="avatar">
-          {post.author?.name?.charAt(0)?.toUpperCase() || '?'}
-        </div>
+        <img
+          src={getAvatarUrl(post.author)}
+          alt={post.author?.name || 'User'}
+          className="post-preview-avatar"
+        />
 
         <div className="post-preview-user">
           <Link to={`/users/${post.author?._id}`}>
@@ -40,6 +44,12 @@ function PostPreview({ post }) {
             @{post.author?.username || 'user'}
           </p>
         </div>
+
+        <FavouriteButton
+          postId={post._id}
+          initialFavourited={post.isFavourited}
+          scope={scope}
+        />
 
       </div>
 

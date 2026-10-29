@@ -5,6 +5,7 @@ import Header from '../components/Header';
 import Feed from '../components/Feed';
 import SearchInput from '../components/SearchInput';
 import { useAuth } from '../context/AuthContext';
+import { getAvatarUrl } from '../assets/avatar';
 
 function Home() {
   const { user } = useAuth();
@@ -163,10 +164,10 @@ function Home() {
   }, [activities]);
 
   return (
-    <div>
+    <div className="min-h-screen">
       <Header />
 
-      <main className="home-layout">
+      <main className="home-layout mt-8">
 
         {/* =========================
             LEFT SIDEBAR
@@ -181,9 +182,9 @@ function Home() {
 
                 {user?.profileImage ? (
                   <img
-                    src={user.profileImage}
-                    alt={user.name}
-                    className="avatar-medium"
+                    src={getAvatarUrl(user)}
+                    alt={user?.name || 'User'}
+                    className="avatar avatar-medium"
                   />
                 ) : (
                   <div className="avatar avatar-medium">
@@ -209,15 +210,6 @@ function Home() {
 
               </div>
             </div>
-
-            {user?._id && (
-              <Link
-                to={`/users/${user._id}`}
-                className="btn btn-outline"
-              >
-                View User
-              </Link>
-            )}
 
           </div>
 
@@ -253,15 +245,14 @@ function Home() {
 
           </div>
 
-          {/* Badges */}
-          <div className="card sidebar-card">
-
-            <h3>Badges</h3>
-
-            <p className="empty-state">
-              No badges available yet.
-            </p>
-
+          {/* Hidden Posts */}
+          <div className="flex justify-center">
+            <Link
+              to="/hidden-posts"
+              className="rounded-md bg-[#e3d8c3] px-3 py-1.5 text-sm font-medium text-[#5c5143] transition-colors hover:bg-[#d5c6ad] hover:text-[#4a4035]"
+            >
+             Hidden Posts
+            </Link>
           </div>
 
         </aside>
@@ -354,7 +345,7 @@ function Home() {
               There is no activity to display.
             </p>
           ) : (
-            <Feed activities={activities} />
+            <Feed activities={activities} scope={scope} />
           )}
 
         </section>
@@ -377,75 +368,63 @@ function Home() {
           </div>
 
 
+          
           {/* Suggested friends */}
           <div className="card sidebar-card">
-
             <h3>Suggested Friends</h3>
 
             {sidebarLoading ? (
-              <p className="loading">
-                Loading users...
-              </p>
+              <p className="loading">Loading users...</p>
             ) : suggestedFriends.length === 0 ? (
               <p className="empty-state">
                 No friend suggestions available.
               </p>
             ) : (
-              suggestedFriends.map((suggestedUser) => (
-                <div
-                  key={suggestedUser._id}
-                  className="friend-card"
-                >
+              <div className="flex flex-col gap-3">
+                <div className="suggested-friends-list">
+                  {suggestedFriends.map((suggestedUser) => (
+                    <div
+                      key={suggestedUser._id}
+                      className="suggested-friend-row"
+                    >
+                      <Link
+                        to={`/users/${suggestedUser._id}`}
+                        className="suggested-friend-link"
+                      >
+                        <img
+                          src={getAvatarUrl(suggestedUser)}
+                          alt={suggestedUser.name || 'User'}
+                          className="suggested-friend-avatar"
+                        />
 
-                  <div className="profile-preview-info">
+                        <div className="suggested-friend-info">
+                          <p className="suggested-friend-name">
+                            {suggestedUser.name}
+                          </p>
 
-                    {suggestedUser.profileImage ? (
-                      <img
-                        src={suggestedUser.profileImage}
-                        alt={suggestedUser.name}
-                        className="avatar-small"
-                      />
-                    ) : (
-                      <div className="avatar avatar-small">
-                        {suggestedUser.name
-                          ?.charAt(0)
-                          ?.toUpperCase() || 'U'}
-                      </div>
-                    )}
+                          {suggestedUser.username && (
+                            <p className="suggested-friend-username">
+                              @{suggestedUser.username}
+                            </p>
+                          )}
+                        </div>
+                      </Link>
 
-                    <div>
-                      <strong>
-                        {suggestedUser.name}
-                      </strong>
-
-                      {suggestedUser.username && (
-                        <p>
-                          @{suggestedUser.username}
-                        </p>
-                      )}
+                      <Link
+                        to={`/users/${suggestedUser._id}`}
+                        className="suggested-friend-view"
+                      >
+                        View
+                      </Link>
                     </div>
-
-                  </div>
-
-                  <Link
-                    to={`/users/${suggestedUser._id}`}
-                    className="btn btn-outline"
-                  >
-                    View User
-                  </Link>
-
+                  ))}
                 </div>
-              ))
+
+              </div>
             )}
 
-            <Link
-              to="/friends"
-              className="btn btn-secondary"
-            >
-              View Friends
-            </Link>
-
           </div>
+
 
 
           {/* Trending */}
@@ -462,7 +441,7 @@ function Home() {
                 ([hashtag, count]) => (
                   <p key={hashtag}>
                     <Link
-                      to={`/search?query=${encodeURIComponent(
+                      to={`/search?q=${encodeURIComponent(
                         `#${hashtag}`
                       )}`}
                       className="hashtag"

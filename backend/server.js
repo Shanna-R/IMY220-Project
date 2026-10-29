@@ -34,9 +34,12 @@ import {
 } from './repositories/albumRepository.js';
 
 import {
-  getCommentsByPost,
+    getCommentsByPost,
   createComment,
-  deleteCommentsForPost
+  deleteCommentsForPost,
+  getCommentCount,
+  getCommentById,
+  deleteComment
 } from './repositories/commentRepository.js';
 
 import {
@@ -122,6 +125,51 @@ function requireAdmin(req, res, next)
 
 function makeId(prefix) {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+}
+
+async function getHiddenPostIds() {
+  const db = getDB();
+
+  const hiddenPosts = await db
+    .collection('reports')
+    .aggregate([
+      {
+        $match: {
+          targetType: 'post'
+        }
+      },
+      {
+        $group: {
+          _id: '$targetId',
+          reportCount: {
+            $sum: 1
+          }
+        }
+      },
+      {
+        $match: {
+          reportCount: {
+            $gte: 3
+          }
+        }
+      }
+    ])
+    .toArray();
+
+  return new Set(
+    hiddenPosts.map(post => post._id)
+  );
+}
+
+async function createNotification(userId, type, message) {
+  await getDB().collection('notifications').insertOne({
+    _id: makeId('n'),
+    userId,
+    type,
+    message,
+    read: false,
+    createdAt: new Date()
+  });
 }
 
 /* =========================
@@ -341,6 +389,7 @@ async function addAuthorsToPosts(posts, currentUserId = null) {
   );
 }
 
+
 app.get('/api/feed', requireLogin, async (req, res) => {
   try {
     const db = getDB();
@@ -360,177 +409,221 @@ app.get('/api/feed', requireLogin, async (req, res) => {
       });
     }
 
+    // Use separate favourites for Local and Global.
+    const FavouritePostIds =
+      scope === 'global'
+        ? currentUser.globalFavouritePostIds || []
+        : currentUser.localFavouritePostIds || [];
+
     let userIds = [];
 
-    /*
-      LOCAL FEED:
-      Current user + friends
-
-      GLOBAL FEED:
-      All users
-    */
+    // LOCAL: current user + friends
+    // GLOBAL: all users
     if (scope === 'global') {
       const allUsers = await db
         .collection('users')
         .find(
-          {},
-          {
-            projection: {
-              _id: 1
-            }
-          }
+          { _id: { $ne: currentUser._id } },
+          { projection: { _id: 1 } }
         )
         .toArray();
 
-      userIds = allUsers.map(
-        user => user._id
+      userIds = allUsers.map(user => user._id);
+    } 
+    else {
+      userIds = (currentUser.friends || []).filter(
+        userId => userId !== currentUser._id
       );
-    } else {
-      userIds = [
-        currentUser._id,
-        ...(currentUser.friends || [])
-      ];
     }
 
-    /* =========================
-       POSTS
-
-       IMPORTANT:
-       Posts use authorId
-       NOT userId
-    ========================= */
-
+    // Fetch posts from the selected feed only.
     let posts;
 
     if (sort === 'popular') {
       posts = await db
         .collection('posts')
         .find({
-          authorId: {
-            $in: userIds
-          }
+          authorId: { $in: userIds }
         })
-        .sort({
-          likes: -1
-        })
+        .sort({ likes: -1 })
         .toArray();
     } else {
       posts = await db
         .collection('posts')
         .find({
-          authorId: {
-            $in: userIds
-          }
+          authorId: { $in: userIds }
         })
-        .sort({
-          createdAt: -1
-        })
+        .sort({ createdAt: -1 })
         .toArray();
     }
 
-    const activities =
-      await addAuthorsToPosts(posts, req.session.userId);
+    // Hide posts with at least 3 reports.
+    const hiddenPostIds = await getHiddenPostIds();
 
-    /* =========================
-       ALBUMS
+    const visiblePosts = posts.filter(
+      post => !hiddenPostIds.has(post._id)
+    );
 
-       IMPORTANT:
-       Albums use ownerId
-       NOT userId
-    ========================= */
+    const activities = await addAuthorsToPosts(
+      visiblePosts,
+      req.session.userId
+    );
 
+    // Fetch albums from the selected feed only.
     const albums = await db
       .collection('albums')
       .find({
-        ownerId: {
-          $in: userIds
-        }
+        ownerId: { $in: userIds }
       })
-      .sort({
-        createdAt: -1
-      })
+      .sort({ createdAt: -1 })
       .toArray();
 
-    const albumActivities =
-      await Promise.all(
-        albums.map(async (album) => {
-          const author = await db
-            .collection('users')
-            .findOne(
-              {
-                _id: album.ownerId
-              },
-              {
-                projection: {
-                  password: 0
-                }
-              }
-            );
+    const albumActivities = await Promise.all(
+      albums.map(async album => {
+        const author = await db
+          .collection('users')
+          .findOne(
+            { _id: album.ownerId },
+            { projection: { password: 0 } }
+          );
 
-          return {
-            ...album,
-            type: 'album',
-            author
-          };
-        })
-      );
+        return {
+          ...album,
+          type: 'album',
+          author
+        };
+      })
+    );
 
-    const postActivities =
-      activities.map(post => ({
-        ...post,
-        type: 'post'
-      }));
+    const postActivities = activities.map(post => ({
+      ...post,
+      type: 'post',
+      isFavourited: FavouritePostIds.includes(post._id)
+    }));
 
-    let combinedActivities = [
+    const combinedActivities = [
       ...postActivities,
       ...albumActivities
     ];
 
-    /* =========================
-       SORT COMBINED FEED
-    ========================= */
+    // Prioritise favourites within the selected feed.
+    combinedActivities.sort((a, b) => {
+      const aIsFavourite =
+        a.type === 'post' &&
+        FavouritePostIds.some(
+          favouriteId => String(favouriteId) === String(a._id)
+        );
 
-    if (sort === 'popular') {
-      combinedActivities.sort(
-        (a, b) => {
-          const aValue =
-            a.type === 'post'
-              ? a.likes || 0
-              : a.postIds?.length || 0;
+      const bIsFavourite =
+        b.type === 'post' &&
+        FavouritePostIds.some(
+          favouriteId => String(favouriteId) === String(b._id)
+        );
 
-          const bValue =
-            b.type === 'post'
-              ? b.likes || 0
-              : b.postIds?.length || 0;
+      if (aIsFavourite !== bIsFavourite) {
+        return aIsFavourite ? -1 : 1;
+      }
 
-          return bValue - aValue;
-        }
+      if (sort === 'popular') {
+        const aValue =
+          a.type === 'post'
+            ? Array.isArray(a.likes)
+              ? a.likes.length
+              : Number(a.likes || 0)
+            : (a.postIds || []).length;
+
+        const bValue =
+          b.type === 'post'
+            ? Array.isArray(b.likes)
+              ? b.likes.length
+              : Number(b.likes || 0)
+            : (b.postIds || []).length;
+
+        return bValue - aValue;
+      }
+
+      return (
+        new Date(b.createdAt || 0) -
+        new Date(a.createdAt || 0)
       );
-    } else {
-      combinedActivities.sort(
-        (a, b) =>
-          new Date(b.createdAt) -
-          new Date(a.createdAt)
-      );
-    }
+    });
 
     res.json({
       scope,
       sort,
       activities: combinedActivities
     });
-
-  } catch (error) {
-    console.error(
-      'Feed error:',
-      error
-    );
+  } 
+  catch (error)
+  {
+    console.error('Feed error:', error);
 
     res.status(500).json({
       error: 'Could not load feed.'
     });
   }
 });
+
+
+app.post('/api/posts/:id/favourite', requireLogin, async (req, res) => {
+  try {
+    const db = getDB();
+    const postId = req.params.id;
+    const scope = req.body.scope;
+
+    if (!['local', 'global'].includes(scope)) {
+      return res.status(400).json({ error: 'Invalid feed scope.' });
+    }
+
+    const post = await db.collection('posts').findOne({ _id: postId });
+
+    if (!post) {
+      return res.status(404).json({ error: 'Post not found.' });
+    }
+
+    const field = scope === 'global'
+      ? 'globalFavouritePostIds'
+      : 'localFavouritePostIds';
+
+    await db.collection('users').updateOne(
+      { _id: req.session.userId },
+      { $addToSet: { [field]: postId } }
+    );
+
+    res.json({ message: 'Post favourited.', isFavourited: true });
+  } catch (error) {
+    console.error('Favourite post error:', error);
+    res.status(500).json({ error: 'Could not favourite post.' });
+  }
+});
+
+app.delete('/api/posts/:id/favourite', requireLogin, async (req, res) => {
+  try {
+    const db = getDB();
+    const postId = req.params.id;
+    const scope = req.body.scope;
+
+    if (!['local', 'global'].includes(scope)) {
+      return res.status(400).json({ error: 'Invalid feed scope.' });
+    }
+
+    const field = scope === 'global'
+      ? 'globalFavouritePostIds'
+      : 'localFavouritePostIds';
+
+    await db.collection('users').updateOne(
+      { _id: req.session.userId },
+      { $pull: { [field]: postId } }
+    );
+
+    res.json({ message: 'Post unfavourited.', isFavourited: false });
+  } catch (error) {
+    console.error('Unfavourite post error:', error);
+    res.status(500).json({ error: 'Could not unfavourite post.' });
+  }
+});
+
+
 
 /* =========================
    USERS
@@ -562,74 +655,84 @@ app.get('/api/users', async (req, res) => {
 });
 
 
-app.get('/api/users/:id', async (req, res) => {
-  try {
-    const user =
-      await getUserById(
-        req.params.id
-      );
 
-    if (!user) {
+app.get('/api/users/:id', async (req, res) => {
+  try
+  {
+    const user = await getUserById(req.params.id);
+
+    if (!user)
+    {
       return res.status(404).json({
         message: 'User not found.'
       });
     }
 
-    const {
-      password,
-      ...safeUser
-    } = user;
-
-    const currentUserId =
-      req.session.userId || null;
-
-    const isOwnUser =
-      currentUserId === user._id;
+    const currentUserId = req.session.userId || null;
+    const isOwnUser = currentUserId === user._id;
 
     let isFriend = false;
     let friendRequestSent = false;
     let friendRequestReceived = false;
 
-    if (currentUserId) {
-      const currentUser =
-        await getUserById(
-          currentUserId
-        );
+    if (currentUserId)
+    {
+      const currentUser = await getUserById(currentUserId);
 
-      if (currentUser) {
-        isFriend =
-          (currentUser.friends || [])
-            .includes(user._id);
+      if (currentUser)
+      {
+        isFriend = (currentUser.friends || []).includes(user._id);
 
         friendRequestSent =
-          (currentUser.friendRequestsSent || [])
-            .includes(user._id);
+          (currentUser.friendRequestsSent || []).includes(user._id);
 
         friendRequestReceived =
-          (currentUser.friendRequestsReceived || [])
-            .includes(user._id);
+          (currentUser.friendRequestsReceived || []).includes(user._id);
       }
+    }
+
+    // Only the owner and their friends can see the full profile.
+    let publicUser = {
+      _id: user._id,
+      name: user.name,
+      profileImage: user.profileImage || '',
+      verified: user.verified || false
+    };
+
+    if (isOwnUser || isFriend)
+    {
+      const posts = await getPostsByAuthor(user._id);
+
+      publicUser = {
+        ...publicUser,
+        username: user.username,
+        bio: user.bio || '',
+        location: user.location || '',
+        postsCount: posts.length,
+        friendsCount: (user.friends || []).length
+      };
     }
 
     res.json({
       user: {
-        ...safeUser,
-
+        ...publicUser,
         isOwnUser,
         isFriend,
         friendRequestSent,
         friendRequestReceived
       }
     });
-
-  } catch (error) {
-    console.error(error);
+  }
+  catch (error)
+  {
+    console.error('Profile error:', error);
 
     res.status(500).json({
       message: 'Unable to load user.'
     });
   }
 });
+
 
 
 app.put('/api/users/:id', requireLogin, async (req, res) => {
@@ -707,182 +810,255 @@ app.delete('/api/users/:id', requireLogin, async (req, res) => {
 
 
 /* =========================
+   FUZZY SEARCH HELPERS
+========================= */
+
+function normalizeSearchText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/^#/, '')
+    .replace(/[^a-z0-9@._-]+/g, ' ')
+    .trim();
+}
+
+// Calculate the number of character edits needed
+// to change one word into another.
+function levenshteinDistance(first, second) {
+  const previous = Array.from(
+    { length: second.length + 1 },
+    (_, index) => index
+  );
+
+  for (let i = 1; i <= first.length; i++) {
+    const current = [i];
+
+    for (let j = 1; j <= second.length; j++) {
+      const insertion = current[j - 1] + 1;
+      const deletion = previous[j] + 1;
+      const substitution =
+        previous[j - 1] + (first[i - 1] === second[j - 1] ? 0 : 1);
+
+      current[j] = Math.min(insertion, deletion, substitution);
+    }
+
+    for (let j = 0; j < current.length; j++) {
+      previous[j] = current[j];
+    }
+  }
+
+  return previous[second.length];
+}
+
+function fuzzyMatch(value, searchTerm) {
+  const text = normalizeSearchText(value);
+  const query = normalizeSearchText(searchTerm);
+
+  if (!text || !query) return false;
+
+  // Exact or partial matches are always accepted.
+  if (text.includes(query)) return true;
+
+  const queryWords = query.split(/\s+/).filter(Boolean);
+  const textWords = text.split(/\s+/).filter(Boolean);
+
+  return queryWords.every((queryWord) => {
+    // Short words should match exactly or partially;
+    // fuzzy matching short words creates too many false positives.
+    if (queryWord.length < 4) {
+      return textWords.some(
+        (word) => word.includes(queryWord)
+      );
+    }
+
+    const maxDistance = queryWord.length >= 7 ? 2 : 1;
+
+    return textWords.some((word) => {
+      if (word.includes(queryWord) || queryWord.includes(word)) {
+        return true;
+      }
+
+      // Avoid comparing words with very different lengths.
+      if (Math.abs(word.length - queryWord.length) > maxDistance) {
+        return false;
+      }
+
+      return (
+        levenshteinDistance(word, queryWord) <= maxDistance
+      );
+    });
+  });
+}
+
+function getHashtagText(hashtags) {
+  if (!Array.isArray(hashtags)) return '';
+
+  return hashtags
+    .map((tag) => String(tag).replace(/^#/, ''))
+    .join(' ');
+}
+
+/* =========================
    SEARCH
 ========================= */
 
-app.get(
-  '/api/search',
-  requireLogin,
-  async (req, res) => {
-    try {
-      const searchTerm =
-        (req.query.q || '').trim();
+app.get('/api/search', requireLogin, async (req, res) => {
+  try {
+    const searchTerm = String(req.query.q || '')
+      .trim()
+      .replace(/^#/, '');
 
-      if (!searchTerm) {
-        return res.json({
-          users: [],
-          posts: [],
-          albums: []
-        });
-      }
-
-      const regex =
-        new RegExp(searchTerm, 'i');
-
-      /* =========================
-         USERS
-
-         Search by:
-         - name
-         - username
-      ========================= */
-
-      const users =
-        await getDB()
-          .collection('users')
-          .find(
-            {
-              $or: [
-                { name: regex },
-                { username: regex }
-              ]
-            },
-            {
-              projection: {
-                password: 0
-              }
-            }
-          )
-          .toArray();
-
-      /* =========================
-         POSTS
-
-         Search by:
-         - title
-         - description
-         - hashtags
-      ========================= */
-
-      const posts =
-        await getDB()
-          .collection('posts')
-          .find({
-            $or: [
-              { title: regex },
-              { description: regex },
-              { hashtags: regex }
-            ]
-          })
-          .toArray();
-
-      /* =========================
-         ADD AUTHORS TO POSTS
-      ========================= */
-
-      const postsWithAuthors =
-        await Promise.all(
-          posts.map(async (post) => {
-            const author =
-              await getDB()
-                .collection('users')
-                .findOne(
-                  {
-                    _id: post.authorId
-                  },
-                  {
-                    projection: {
-                      password: 0
-                    }
-                  }
-                );
-
-            return {
-              ...post,
-              author: author
-                ? {
-                    _id: author._id,
-                    name: author.name,
-                    username: author.username
-                  }
-                : null
-            };
-          })
-        );
-
-      /* =========================
-         ALBUMS
-
-         Search by:
-         - name
-         - description
-         - hashtags
-      ========================= */
-
-      const albums =
-        await getDB()
-          .collection('albums')
-          .find({
-            $or: [
-              { name: regex },
-              { description: regex },
-              { hashtags: regex }
-            ]
-          })
-          .toArray();
-
-      /* =========================
-         ADD OWNERS TO ALBUMS
-      ========================= */
-
-      const albumsWithOwners =
-        await Promise.all(
-          albums.map(async (album) => {
-            const owner =
-              await getDB()
-                .collection('users')
-                .findOne(
-                  {
-                    _id: album.ownerId
-                  },
-                  {
-                    projection: {
-                      password: 0
-                    }
-                  }
-                );
-
-            return {
-              ...album,
-              owner: owner
-                ? {
-                    _id: owner._id,
-                    name: owner.name,
-                    username: owner.username
-                  }
-                : null
-            };
-          })
-        );
-
-      res.json({
-        users,
-        posts: postsWithAuthors,
-        albums: albumsWithOwners
-      });
-
-    } catch (error) {
-      console.error(
-        'Search error:',
-        error
-      );
-
-      res.status(500).json({
-        error: 'Search failed.'
+    if (!searchTerm) {
+      return res.json({
+        users: [],
+        posts: [],
+        albums: []
       });
     }
+
+    const db = getDB();
+
+    // Load users without exposing their passwords.
+    const allUsers = await db
+      .collection('users')
+      .find(
+        {},
+        {
+          projection: {
+            password: 0
+          }
+        }
+      )
+      .toArray();
+
+    const hiddenPostIds = await getHiddenPostIds();
+
+    const allPosts = await db
+      .collection('posts')
+      .find({
+        _id: {
+          $nin: [...hiddenPostIds]
+        }
+      })
+      .toArray();
+
+    const allAlbums = await db
+      .collection('albums')
+      .find({})
+      .toArray();
+
+    /* =========================
+       USERS
+       Search name, username, email
+    ========================= */
+
+    const users = allUsers
+      .filter((user) =>
+        fuzzyMatch(
+          [
+            user.name,
+            user.username,
+            user.email
+          ].filter(Boolean).join(' '),
+          searchTerm
+        )
+      )
+      .slice(0, 50);
+
+    /* =========================
+       POSTS
+       Search title, description, hashtags
+    ========================= */
+
+    const matchingPosts = allPosts
+      .filter((post) =>
+        fuzzyMatch(
+          [
+            post.title,
+            post.description,
+            getHashtagText(post.hashtags)
+          ].filter(Boolean).join(' '),
+          searchTerm
+        )
+      )
+      .slice(0, 50);
+
+    /* =========================
+       ADD AUTHORS TO POSTS
+    ========================= */
+
+    const postsWithAuthors = matchingPosts.map((post) => {
+      const author = allUsers.find(
+        (user) =>
+          String(user._id) === String(post.authorId)
+      );
+
+      return {
+        ...post,
+        author: author
+          ? {
+              _id: author._id,
+              name: author.name,
+              username: author.username
+            }
+          : null
+      };
+    });
+
+    /* =========================
+       ALBUMS
+       Search name, description, hashtags
+    ========================= */
+
+    const matchingAlbums = allAlbums
+      .filter((album) =>
+        fuzzyMatch(
+          [
+            album.name,
+            album.description,
+            getHashtagText(album.hashtags)
+          ].filter(Boolean).join(' '),
+          searchTerm
+        )
+      )
+      .slice(0, 50);
+
+    /* =========================
+       ADD OWNERS TO ALBUMS
+    ========================= */
+
+    const albumsWithOwners = matchingAlbums.map((album) => {
+      const owner = allUsers.find(
+        (user) =>
+          String(user._id) === String(album.ownerId)
+      );
+
+      return {
+        ...album,
+        owner: owner
+          ? {
+              _id: owner._id,
+              name: owner.name,
+              username: owner.username
+            }
+          : null
+      };
+    });
+
+    return res.json({
+      users,
+      posts: postsWithAuthors,
+      albums: albumsWithOwners
+    });
+  } catch (error) {
+    console.error('Search error:', error);
+
+    return res.status(500).json({
+      error: 'Search failed.'
+    });
   }
-);
+});
 
 
 /* =========================
@@ -904,10 +1080,23 @@ app.get(
         });
       }
 
-      const posts =
-        await getPostsByAuthor(
-          req.params.id
-        );
+      const currentUser = await getUserById(req.session.userId);
+
+      const isOwnProfile = req.session.userId === user._id;
+
+      const isFriend = (currentUser?.friends || []).includes(user._id);
+
+      if (!isOwnProfile && !isFriend)
+      {
+        return res.status(403).json({
+          message: 'You must be friends to view this user\'s posts.'
+        });
+      }
+
+      const hiddenPostIds = await getHiddenPostIds();
+
+      const posts = (await getPostsByAuthor(req.params.id))
+        .filter(post => !hiddenPostIds.has(post._id));
 
       const users =
         await getAllUsers();
@@ -1012,13 +1201,14 @@ app.get(
             friendId
           );
 
-        if (friend) {
-          const {
-            password,
-            ...safeFriend
-          } = friend;
-
-          friends.push(safeFriend);
+        if (friend)
+        {
+          friends.push({
+            _id: friend._id,
+            name: friend.name,
+            username: friend.username,
+            profileImage: friend.profileImage || ''
+          });
         }
       }
 
@@ -1079,7 +1269,12 @@ app.get(
             ...safeFriend
           } = friend;
 
-          friends.push(safeFriend);
+          friends.push({
+            _id: friend._id,
+            name: friend.name,
+            username: friend.username,
+            profileImage: friend.profileImage
+          });
         }
       }
 
@@ -1238,6 +1433,89 @@ app.post(
 
       res.status(500).json({
         message: 'Unable to send friend request.'
+      });
+    }
+  }
+);
+
+// Favourite a user
+app.post(
+  '/api/users/:id/favourite',
+  requireLogin,
+  async (req, res) => {
+    try {
+      const db = getDB();
+      const currentUserId = req.session.userId;
+      const targetUserId = req.params.id;
+
+      if (currentUserId === targetUserId) {
+        return res.status(400).json({
+          error: 'You cannot favourite yourself.'
+        });
+      }
+
+      const targetUser = await db
+        .collection('users')
+        .findOne({ _id: targetUserId });
+
+      if (!targetUser) {
+        return res.status(404).json({
+          error: 'User not found.'
+        });
+      }
+
+      await db.collection('users').updateOne(
+        { _id: currentUserId },
+        {
+          $addToSet: {
+            FavouritePostIds: targetUserId
+          }
+        }
+      );
+
+      res.json({
+        message: 'User added to favourites.',
+        favourited: true
+      });
+    } catch (error) {
+      console.error('Favourite user error:', error);
+
+      res.status(500).json({
+        error: 'Could not favourite user.'
+      });
+    }
+  }
+);
+
+
+// Unfavourite a user
+app.delete(
+  '/api/users/:id/favourite',
+  requireLogin,
+  async (req, res) => {
+    try {
+      const db = getDB();
+      const currentUserId = req.session.userId;
+      const targetUserId = req.params.id;
+
+      await db.collection('users').updateOne(
+        { _id: currentUserId },
+        {
+          $pull: {
+            FavouritePostIds: targetUserId
+          }
+        }
+      );
+
+      res.json({
+        message: 'User removed from favourites.',
+        favourited: false
+      });
+    } catch (error) {
+      console.error('Unfavourite user error:', error);
+
+      res.status(500).json({
+        error: 'Could not remove favourite.'
       });
     }
   }
@@ -1553,6 +1831,19 @@ app.get('/api/posts/:id', async (req, res) => {
       });
     }
 
+    const albums = await getAllAlbums();
+
+    const postAlbums = albums
+      .filter(album =>
+        (album.postIds || []).some(
+          postId => String(postId) === String(post._id)
+        )
+      )
+      .map(album => ({
+        _id: album._id,
+        name: album.name
+      }));
+
     const author =
       await getUserById(
         post.authorId
@@ -1594,7 +1885,8 @@ app.get('/api/posts/:id', async (req, res) => {
           ? likesArray.includes(currentUserId)
           : false,
 
-        author: safeAuthor
+        author: safeAuthor,
+        albums: postAlbums
       },
 
       comments,
@@ -1609,6 +1901,70 @@ app.get('/api/posts/:id', async (req, res) => {
     });
   }
 });
+
+// HIDDEN POSTS (for admins and users who reported posts)
+app.get(
+  '/api/hidden-posts',
+  requireLogin,
+  async (req, res) => {
+    try {
+      const db = getDB();
+      const currentUserId = req.session.userId;
+
+      const currentUser = await db
+        .collection('users')
+        .findOne({
+          _id: currentUserId
+        });
+
+      if (!currentUser) {
+        return res.status(404).json({
+          error: 'User not found.'
+        });
+      }
+
+      const hiddenPostIds = await getHiddenPostIds();
+
+      const query = {
+        _id: {
+          $in: [...hiddenPostIds]
+        }
+      };
+
+      // Regular users can only see their own hidden posts.
+      // Admins can see all hidden posts.
+      if (!currentUser.isAdmin) {
+        query.authorId = currentUserId;
+      }
+
+      const posts = await db
+        .collection('posts')
+        .find(query)
+        .sort({
+          createdAt: -1
+        })
+        .toArray();
+
+      const activities = await addAuthorsToPosts(
+        posts,
+        currentUserId
+      );
+
+      res.json({
+        activities: activities.map(post => ({
+          ...post,
+          type: 'post'
+        }))
+      });
+    } catch (error) {
+      console.error('Hidden posts error:', error);
+
+      res.status(500).json({
+        error: 'Could not load hidden posts.'
+      });
+    }
+  }
+);
 
 
 /* =========================
@@ -1810,10 +2166,7 @@ app.delete(
   requireLogin,
   async (req, res) => {
     try {
-      const post =
-        await getPostById(
-          req.params.id
-        );
+      const post = await getPostById(req.params.id);
 
       if (!post) {
         return res.status(404).json({
@@ -1821,22 +2174,42 @@ app.delete(
         });
       }
 
-      if (
-        post.authorId !==
-        req.session.userId
-      ) {
+      if (post.authorId !== req.session.userId) {
         return res.status(403).json({
           message: 'You can only delete your own posts.'
         });
       }
 
-      await deletePost(
-        req.params.id
-      );
+      // Remove the post from every album containing it.
+      const albums = await getAllAlbums();
 
-      await deleteCommentsForPost(
-        req.params.id
-      );
+      for (const album of albums) {
+        const postIds = album.postIds || [];
+
+        const containsPost = postIds.some(
+          postId => String(postId) === String(post._id)
+        );
+
+        if (containsPost) {
+          const updatedPostIds = postIds.filter(
+            postId => String(postId) !== String(post._id)
+          );
+
+          if (updatedPostIds.length === 0) {
+            // Delete the album if this was its only post.
+            await deleteAlbum(album._id);
+          } else {
+            // Otherwise, keep the album and update its posts.
+            await updateAlbum(album._id, {
+              postIds: updatedPostIds
+            });
+          }
+        }
+      }
+
+      // Delete the post and its related comments.
+      await deletePost(req.params.id);
+      await deleteCommentsForPost(req.params.id);
 
       res.json({
         message: 'Post deleted.'
@@ -1933,6 +2306,57 @@ app.post(
   }
 );
 
+app.get(
+  '/api/posts/:id/comments/count',
+  async (req, res) => {
+    try {
+      const count = await getCommentCount(req.params.id);
+
+      res.json({ count });
+    } catch (error) {
+      console.error(error);
+
+      res.status(500).json({
+        message: 'Unable to load comment count.'
+      });
+    }
+  }
+);
+
+app.delete(
+  '/api/comments/:id',
+  requireLogin,
+  async (req, res) => {
+    try {
+      const comment = await getCommentById(req.params.id);
+
+      if (!comment) {
+        return res.status(404).json({
+          message: 'Comment not found.'
+        });
+      }
+
+      if (comment.authorId !== req.session.userId) {
+        return res.status(403).json({
+          message: 'You can only delete your own comments.'
+        });
+      }
+
+      await deleteComment(req.params.id);
+
+      res.json({
+        message: 'Comment deleted successfully.'
+      });
+    } catch (error) {
+      console.error(error);
+
+      res.status(500).json({
+        message: 'Unable to delete comment.'
+      });
+    }
+  }
+);
+
 /* =========================
    ALBUMS
 ========================= */
@@ -1947,6 +2371,8 @@ app.get('/api/albums', async (req, res) => {
     const posts =
       getDB().collection('posts');
 
+    const hiddenPostIds = await getHiddenPostIds();
+
     const albumsWithOwners =
       await Promise.all(
         albums.map(async (album) => {
@@ -1957,18 +2383,20 @@ app.get('/api/albums', async (req, res) => {
 
           let coverImage = '';
 
-          if (
-            album.postIds &&
-            album.postIds.length > 0
-          ) {
-            const firstPost =
-              await posts.findOne({
-                _id: album.postIds[0]
+          if (album.postIds && album.postIds.length > 0)
+          {
+            const visiblePostIds = album.postIds.filter(
+              postId => !hiddenPostIds.has(postId)
+            );
+
+            if (visiblePostIds.length > 0) {
+              const firstPost = await posts.findOne({
+                _id: { $in: visiblePostIds }
               });
 
-            if (firstPost) {
-              coverImage =
-                firstPost.imageUrl || '';
+              if (firstPost) {
+                coverImage = firstPost.imageUrl || '';
+              }
             }
           }
 
@@ -2001,13 +2429,33 @@ app.get('/api/albums', async (req, res) => {
   }
 });
 
+app.get('/api/albums/hashtag-suggestions', requireLogin, async (req, res) => {
+  try {
+    const posts = await getPostsByAuthor(req.session.userId);
+    const counts = {};
+
+    posts.forEach(post => {
+      (post.hashtags || []).forEach(raw => {
+        const tag = String(raw).replace(/^#/, '').trim().toLowerCase();
+        if (tag) counts[tag] = (counts[tag] || 0) + 1;
+      });
+    });
+
+    const suggestions = Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([tag, count]) => ({ tag, count }));
+
+    res.json({ suggestions });
+  } catch (error) {
+    console.error('Could not build hashtag suggestions:', error);
+    res.status(500).json({ message: 'Unable to load suggestions.' });
+  }
+});
 
 app.get('/api/albums/:id', async (req, res) => {
   try {
-    const album =
-      await getAlbumById(
-        req.params.id
-      );
+    const album = await getAlbumById(req.params.id);
 
     if (!album) {
       return res.status(404).json({
@@ -2015,10 +2463,7 @@ app.get('/api/albums/:id', async (req, res) => {
       });
     }
 
-    const owner =
-      await getUserById(
-        album.ownerId
-      );
+    const owner = await getUserById(album.ownerId);
 
     const safeOwner = owner
       ? {
@@ -2028,11 +2473,31 @@ app.get('/api/albums/:id', async (req, res) => {
         }
       : null;
 
+    // Get the actual posts belonging to this album.
+    
+    // Get the actual posts belonging to this album, excluding hidden posts.
+    const db = getDB();
+    const postIds = album.postIds || [];
+    const hiddenPostIds = await getHiddenPostIds();
+
+    const posts = postIds.length > 0
+      ? await db.collection('posts')
+          .find({
+            _id: {
+              $in: postIds,
+              $nin: [...hiddenPostIds]
+            }
+          })
+          .toArray()
+      : [];
+
+
     res.json({
       album: {
         ...album,
         owner: safeOwner
-      }
+      },
+      posts
     });
 
   } catch (error) {
@@ -2044,10 +2509,8 @@ app.get('/api/albums/:id', async (req, res) => {
   }
 });
 
-app.post(
-  '/api/albums',
-  requireLogin,
-  async (req, res) => {
+
+app.post('/api/albums', requireLogin, async (req, res) => {
     try {
       const {
         name,
@@ -2093,10 +2556,7 @@ app.post(
   }
 );
 
-app.put(
-  '/api/albums/:id',
-  requireLogin,
-  async (req, res) => {
+app.put('/api/albums/:id', requireLogin, async (req, res) => {
     try {
       const album =
         await getAlbumById(
@@ -2143,10 +2603,7 @@ app.put(
   }
 );
 
-app.delete(
-  '/api/albums/:id',
-  requireLogin,
-  async (req, res) => {
+app.delete('/api/albums/:id', requireLogin, async (req, res) => {
     try {
       const album =
         await getAlbumById(
@@ -2185,6 +2642,99 @@ app.delete(
     }
   }
 );
+
+// add/remove post from album
+app.post('/api/albums/:id/posts/:postId', requireLogin, async (req,res)=>{
+
+  try
+  {
+    const album = await getAlbumById(req.params.id);
+
+    if(!album)
+    {
+      return res.status(404).json({message:'Album not found.'});
+    }
+
+    const post = await getPostById(req.params.postId);
+
+    if (!post) {
+      return res.status(404).json({
+        message: 'Post not found.'
+      });
+    }
+
+    const hiddenPostIds = await getHiddenPostIds();
+
+    if (hiddenPostIds.has(post._id)) {
+      return res.status(403).json({
+        message: 'Hidden posts cannot be added to albums.'
+      });
+    }
+
+    if(album.ownerId !== req.session.userId)
+    {
+      return res.status(403).json({message:'Not your album.'});
+    }
+
+    await getDB().collection('albums').updateOne({_id:album._id},{$addToSet:{postIds:req.params.postId}});
+    res.json({message:'Post added.'});
+  }
+  catch (error)
+  {
+      console.error(error);
+
+      res.status(500).json({
+        message: 'Unable to add post to album.'
+      });
+    }
+  
+});
+
+
+app.delete('/api/albums/:id/posts/:postId', async (req, res) => {
+  try {
+    if (!req.session.userId) {
+      return res.status(401).json({
+        message: 'You must be logged in.'
+      });
+    }
+
+    const album = await getAlbumById(req.params.id);
+
+    if (!album) {
+      return res.status(404).json({
+        message: 'Album not found.'
+      });
+    }
+
+    if (String(album.ownerId) !== String(req.session.userId)) {
+      return res.status(403).json({
+        message: 'You cannot edit this album.'
+      });
+    }
+
+    const postId = req.params.postId;
+
+    if (!(album.postIds || []).map(String).includes(String(postId))) {
+      return res.status(404).json({
+        message: 'Post is not in this album.'
+      });
+    }
+
+    await getDB().collection('albums').updateOne(
+      { _id: album._id },
+      { $pull: { postIds: postId } }
+    );
+
+    res.json({ message: 'Post removed from album.' });
+  } catch (error) {
+    console.error('Error removing post from album:', error);
+
+    res.status(500).json({
+      message: 'Could not remove post from album.'
+    });
+  }
+});
 
 
 // ==================== ADMIN ROUTES ====================
@@ -2254,34 +2804,77 @@ app.put('/api/admin/users/:id', requireAdmin, async (req, res) =>
 });
 
 
-// Delete any user
-app.delete('/api/admin/users/:id', requireAdmin, async (req, res) =>
-{
-    try
-    {
-        const result = await deleteUser(req.params.id);
+// Delete a user as an admin
+app.delete('/api/admin/posts/:id', requireAdmin, async (req, res) => {
+  try {
+    const post = await getPostById(req.params.id);
 
-        if (result.deletedCount === 0)
-        {
-            return res.status(404).json({
-                message: 'User not found.'
-            });
-        }
-
-        await deleteReportsForUser(req.params.id);
-
-        res.json({
-            message: 'User deleted successfully.'
-        });
+    if (!post) {
+      return res.status(404).json({ message: 'Post not found.' });
     }
-    catch (error)
-    {
-        console.error('Could not delete user:', error);
 
-        res.status(500).json({
-            message: 'Unable to delete user.'
-        });
+    await deletePost(req.params.id);
+    await deleteCommentsForPost(req.params.id);
+    await deleteReportsForPost(req.params.id);
+    await removePostFromAlbums(req.params.id);
+
+    // Alert the author (unless the admin deleted their own post)
+    if (post.authorId !== req.session.userId) {
+      const label = post.title || (post.description || '').slice(0, 40);
+      await createNotification(
+        post.authorId,
+        'post_deleted',
+        `An administrator removed your post "${label}" because it broke the community guidelines.`
+      );
     }
+
+    res.json({ message: 'Post deleted successfully.' });
+  } catch (error) {
+    console.error('Could not delete admin post:', error);
+    res.status(500).json({ message: 'Unable to delete post.' });
+  }
+});
+
+app.get('/api/notifications', requireLogin, async (req, res) => {
+  try {
+    const notifications = await getDB()
+      .collection('notifications')
+      .find({ userId: req.session.userId })
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .toArray();
+
+    res.json({ notifications });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Unable to load notifications.' });
+  }
+});
+
+app.post('/api/notifications/read', requireLogin, async (req, res) => {
+  try {
+    await getDB().collection('notifications').updateMany(
+      { userId: req.session.userId, read: false },
+      { $set: { read: true } }
+    );
+    res.json({ message: 'Notifications marked as read.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Unable to update notifications.' });
+  }
+});
+
+app.delete('/api/notifications/:id', requireLogin, async (req, res) => {
+  try {
+    await getDB().collection('notifications').deleteOne({
+      _id: req.params.id,
+      userId: req.session.userId
+    });
+    res.json({ message: 'Notification dismissed.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Unable to dismiss notification.' });
+  }
 });
 
 
@@ -2348,34 +2941,29 @@ app.put('/api/admin/posts/:id', requireAdmin, async (req, res) =>
 
 
 // Delete any post
-app.delete('/api/admin/posts/:id', requireAdmin, async (req, res) =>
-{
-    try
-    {
-        const result = await deletePost(req.params.id);
 
-        if (result.deletedCount === 0)
-        {
-            return res.status(404).json({
-                message: 'Post not found.'
-            });
-        }
+ // Delete any post as an admin
+app.delete('/api/admin/posts/:id', requireAdmin, async (req, res) => {
+  try {
+    const result = await deletePost(req.params.id);
 
-        await deleteReportsForPost(req.params.id);
-
-        res.json({
-            message: 'Post deleted successfully.'
-        });
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ message: 'Post not found.' });
     }
-    catch (error)
-    {
-        console.error('Could not delete post:', error);
 
-        res.status(500).json({
-            message: 'Unable to delete post.'
-        });
-    }
+    // Delete comments belonging to this post
+    await deleteCommentsForPost(req.params.id);
+
+    // Delete reports belonging to this post
+    await deleteReportsForPost(req.params.id);
+
+    res.json({ message: 'Post deleted successfully.' });
+  } catch (error) {
+    console.error('Could not delete admin post:', error);
+    res.status(500).json({ message: 'Unable to delete post.' });
+  }
 });
+
 
 
 // Delete any activity
@@ -2480,43 +3068,136 @@ app.post('/api/admin/report-reasons', requireAdmin, async (req, res) =>
 });
 
 
+
 /* =========================
    REPORT REASONS
 ========================= */
 
-app.get(
-  '/api/report-reasons',
-  requireLogin,
-  async (req, res) => {
-    try
-    {
-      const db = getDB();
+// Public route: get all reasons for the Post page dropdown
+app.get('/api/report-reasons', async (req, res) => {
+    try {
+        const db = getDB();
 
-      const reasons = await db
-        .collection('reportReasons')
-        .find({})
-        .sort({
-          createdAt: 1
-        })
-        .toArray();
+        const reasons = await db.collection('reportReasons')
+            .find({})
+            .sort({ reason: 1 })
+            .toArray();
 
-      res.json({
-        reasons
-      });
+        res.json({ reasons });
+    } catch (error) {
+        console.error('Could not load report reasons:', error);
+
+        res.status(500).json({
+            message: 'Unable to load report reasons.'
+        });
     }
-    catch (error)
-    {
-      console.error(
-        'Could not load report reasons:',
-        error
-      );
+});
 
-      res.status(500).json({
-        message: 'Unable to load report reasons.'
-      });
+
+// Admin route: get all reasons for the Admin page
+app.get('/api/admin/report-reasons', requireAdmin, async (req, res) => {
+    try {
+        const db = getDB();
+
+        const reasons = await db.collection('reportReasons')
+            .find({})
+            .sort({ reason: 1 })
+            .toArray();
+
+        res.json({ reasons });
+    } catch (error) {
+        console.error('Could not load admin report reasons:', error);
+
+        res.status(500).json({
+            message: 'Unable to load report reasons.'
+        });
     }
-  }
-);
+});
+
+
+// Admin route: add a reason
+app.post('/api/admin/report-reasons', requireAdmin, async (req, res) => {
+    try {
+        const reason = req.body.reason?.trim();
+
+        if (!reason) {
+            return res.status(400).json({
+                message: 'Please enter a report reason.'
+            });
+        }
+
+        const db = getDB();
+        const collection = db.collection('reportReasons');
+
+        const existingReason = await collection.findOne({
+            reason: { $regex: `^${reason.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }
+        });
+
+        if (existingReason) {
+            return res.status(409).json({
+                message: 'That report reason already exists.'
+            });
+        }
+
+        const newReason = {
+            reason,
+            createdAt: new Date()
+        };
+
+        const result = await collection.insertOne(newReason);
+
+        res.status(201).json({
+            message: 'Report reason added successfully.',
+            reason: {
+                _id: result.insertedId,
+                ...newReason
+            }
+        });
+    } catch (error) {
+        console.error('Could not add report reason:', error);
+
+        res.status(500).json({
+            message: 'Unable to add report reason.'
+        });
+    }
+});
+
+
+// Admin route: delete a reason
+app.delete('/api/admin/report-reasons/:id', requireAdmin, async (req, res) => {
+    try {
+        const { ObjectId } = await import('mongodb');
+
+        if (!ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({
+                message: 'Invalid report reason ID.'
+            });
+        }
+
+        const db = getDB();
+
+        const result = await db.collection('reportReasons').deleteOne({
+            _id: new ObjectId(req.params.id)
+        });
+
+        if (result.deletedCount === 0) {
+            return res.status(404).json({
+                message: 'Report reason not found.'
+            });
+        }
+
+        res.json({
+            message: 'Report reason deleted successfully.'
+        });
+    } catch (error) {
+        console.error('Could not delete report reason:', error);
+
+        res.status(500).json({
+            message: 'Unable to delete report reason.'
+        });
+    }
+});
+
 
 
 /* =========================
@@ -2722,6 +3403,101 @@ app.post(
 );
 
 
+// User asks to be verified
+app.post('/api/verification-request', requireLogin, async (req, res) => {
+  try {
+    const user = await getUserById(req.session.userId);
+
+    if (user.verified) {
+      return res.status(400).json({ message: 'Your account is already verified.' });
+    }
+    if (user.verificationStatus === 'pending') {
+      return res.status(400).json({ message: 'You already have a pending request.' });
+    }
+
+    await getDB().collection('users').updateOne(
+      { _id: user._id },
+      { $set: { verificationStatus: 'pending', verificationRequestedAt: new Date() } }
+    );
+
+    res.json({
+      message: 'Verification request sent.',
+      verificationStatus: 'pending'
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Unable to send verification request.' });
+  }
+});
+
+// Admin: list pending requests
+app.get('/api/admin/verification-requests', requireAdmin, async (req, res) => {
+  try {
+    const users = await getDB()
+      .collection('users')
+      .find({ verificationStatus: 'pending' })
+      .project({ password: 0 })
+      .sort({ verificationRequestedAt: 1 })
+      .toArray();
+
+    res.json({ users });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Unable to load verification requests.' });
+  }
+});
+
+// Admin: approve
+app.post('/api/admin/users/:id/verify', requireAdmin, async (req, res) => {
+  try {
+    const result = await getDB().collection('users').updateOne(
+      { _id: req.params.id },
+      { $set: { verified: true, verificationStatus: 'approved' } }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    await createNotification(
+      req.params.id,
+      'verification_approved',
+      'Your account has been verified. A verified badge now appears on your profile.'
+    );
+
+    res.json({ message: 'User verified.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Unable to verify user.' });
+  }
+});
+
+// Admin: reject
+app.post('/api/admin/users/:id/reject-verification', requireAdmin, async (req, res) => {
+  try {
+    const result = await getDB().collection('users').updateOne(
+      { _id: req.params.id },
+      { $set: { verified: false, verificationStatus: 'rejected' } }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ message: 'User not found.' });
+    }
+
+    await createNotification(
+      req.params.id,
+      'verification_rejected',
+      'Your verification request was not approved. You can submit a new request later.'
+    );
+
+    res.json({ message: 'Verification request rejected.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Unable to reject request.' });
+  }
+});
+
+
 /*
     ADMIN: GET ALL REPORTS
 */
@@ -2833,11 +3609,79 @@ app.get(
 
 
 /* =========================
+   ADMIN ALBUMS
+========================= */
+
+// Get all albums
+app.get('/api/admin/albums', requireAdmin, async (req, res) => {
+  try {
+    const albums = await getAllAlbums();
+    const users = await getAllUsers();
+
+    const albumsWithOwners = albums.map(album => {
+      const owner = users.find(
+        user => user._id === album.ownerId
+      );
+
+      return {
+        ...album,
+        owner: owner
+          ? {
+              _id: owner._id,
+              name: owner.name,
+              username: owner.username
+            }
+          : null
+      };
+    });
+
+    res.json({
+      albums: albumsWithOwners
+    });
+  } catch (error) {
+    console.error('Could not load admin albums:', error);
+
+    res.status(500).json({
+      message: 'Unable to load albums.'
+    });
+  }
+});
+
+
+// Delete any album as an admin
+app.delete('/api/admin/albums/:id', requireAdmin, async (req, res) => {
+  try {
+    const album = await getAlbumById(req.params.id);
+
+    if (!album) {
+      return res.status(404).json({
+        message: 'Album not found.'
+      });
+    }
+
+    await deleteAlbum(req.params.id);
+
+    res.json({
+      message: 'Album deleted successfully.'
+    });
+  } catch (error) {
+    console.error('Could not delete admin album:', error);
+
+    res.status(500).json({
+      message: 'Unable to delete album.'
+    });
+  }
+});
+
+
+
+/* =========================
    START SERVER
 ========================= */
 
 async function startServer() {
-  try {
+  try
+  {
     await connectDB();
 
     app.listen(
@@ -2850,11 +3694,11 @@ async function startServer() {
       }
     );
 
-  } catch (error) {
-    console.error(
-      'Could not start server:',
-      error
-    );
+  } 
+  catch (error)
+  {
+    console.error('Could not start server:', error);
+    process.exit(1);
   }
 }
 
